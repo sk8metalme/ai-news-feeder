@@ -3,6 +3,7 @@ Fact checking module for verifying news articles
 """
 import requests
 import time
+import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
 from bs4 import BeautifulSoup
 from urllib.parse import quote
@@ -74,26 +75,31 @@ class FactChecker:
                     response = self.session.get(rss_url, timeout=10)
                     response.raise_for_status()
                     
-                    soup = BeautifulSoup(response.content, 'xml')
-                    items = soup.find_all('item')[:3]  # Limit to 3 per tag
-                    
-                    query_words = set(query.lower().split())
-                    
-                    for item in items:
-                        title = item.find('title')
-                        title_text = title.text if title else ''
+                    # Parse XML using built-in xml.etree.ElementTree
+                    try:
+                        root = ET.fromstring(response.content)
+                        items = root.findall('.//item')[:3]  # Limit to 3 per tag
                         
-                        # Simple keyword matching
-                        if any(word in title_text.lower() for word in query_words if len(word) > 3):
-                            link = item.find('link')
-                            pub_date = item.find('pubDate')
+                        query_words = set(query.lower().split())
+                        
+                        for item in items:
+                            title_elem = item.find('title')
+                            title_text = title_elem.text if title_elem is not None else ''
                             
-                            related_articles.append({
-                                'title': title_text,
-                                'url': link.text if link else '',
-                                'source': 'medium',
-                                'published_at': pub_date.text if pub_date else ''
-                            })
+                            # Simple keyword matching
+                            if any(word in title_text.lower() for word in query_words if len(word) > 3):
+                                link_elem = item.find('link')
+                                pub_date_elem = item.find('pubDate')
+                                
+                                related_articles.append({
+                                    'title': title_text,
+                                    'url': link_elem.text if link_elem is not None else '',
+                                    'source': 'medium',
+                                    'published_at': pub_date_elem.text if pub_date_elem is not None else ''
+                                })
+                    except ET.ParseError as parse_error:
+                        logger.warning(f"Failed to parse XML for tag {tag}: {parse_error}")
+                        continue
                     
                     time.sleep(0.5)  # Rate limiting
                     

@@ -55,6 +55,24 @@ python main.py --schedule
 ./install_cron.sh
 ```
 
+## 🧪 テスト実行
+
+```bash
+# 全テストを実行
+python -m pytest tests/ -v
+
+# または専用スクリプトを使用
+./run_tests.py
+
+# 特定のテストモジュールのみ実行
+./run_tests.py hacker_news_api
+```
+
+### テスト統計
+- **テスト数**: 56テスト
+- **カバレッジ**: 主要機能をカバー
+- **テスト種類**: 単体テスト、統合テスト、エラーハンドリング
+
 ## 📁 プロジェクト構造
 
 ```
@@ -62,6 +80,8 @@ ai-news-feeder/
 ├── main.py                 # メインエントリーポイント
 ├── requirements.txt        # Python依存関係
 ├── install_cron.sh        # cron設定スクリプト
+├── run_tests.py           # テスト実行スクリプト
+├── pytest.ini            # pytest設定
 ├── config/
 │   └── settings.py        # 設定ファイル
 ├── src/
@@ -75,9 +95,12 @@ ai-news-feeder/
 │   │   ├── logger.py      # ログ機能
 │   │   └── report_generator.py # レポート生成
 │   └── scheduler.py       # スケジューラー
-├── logs/                  # ログファイル
-├── data/                  # JSON レポート
-└── tests/                 # テストファイル
+├── tests/                 # テストファイル
+│   ├── conftest.py       # pytest設定とフィクスチャ
+│   ├── test_*.py         # 各種テストファイル
+├── logs/                 # ログファイル
+├── data/                 # JSON レポート
+└── .gitignore           # Git除外設定
 ```
 
 ## ⚙️ 設定
@@ -139,17 +162,27 @@ def format_verification_report(self, verification_result: Dict) -> str:
 - 内容: 検証結果の詳細データ
 - 形式: 構造化JSON
 
-## 🧪 テスト実行
+## 🧪 テスト実行詳細
 
+### テスト構成
+- **設定テスト**: 12テスト - 設定値とenv変数のテスト
+- **Hacker News API**: 10テスト - API通信、フィルタリング、エラー処理
+- **ファクトチェッカー**: 10テスト - dev.to/Medium検索、検証ロジック
+- **Slack通知**: 8テスト - メッセージフォーマット、通知送信
+- **レポート生成**: 6テスト - JSON生成、統計計算、ファイル保存
+- **スケジューラー**: 6テスト - ジョブ実行、エラーハンドリング、統合テスト
+- **メインアプリ**: 5テスト - CLI引数、例外処理
+
+### テスト実行例
 ```bash
-# 単発テスト実行
-python main.py --run-once
+# 全テスト実行
+python -m pytest tests/ -v
 
-# ログを確認
-tail -f logs/ai_news_feeder_$(date +%Y%m%d).log
+# 特定モジュールのテスト
+python -m pytest tests/test_hacker_news_api.py -v
 
-# 生成されたレポートを確認
-cat data/ai_news_report_$(date +%Y%m%d).json
+# カバレッジレポート付き（pytest-covがインストールされている場合）
+python -m pytest tests/ --cov=src --cov-report=term-missing
 ```
 
 ## 🔍 トラブルシューティング
@@ -168,6 +201,10 @@ cat data/ai_news_report_$(date +%Y%m%d).json
    - レート制限に引っかかっている可能性
    - ログで詳細なエラーメッセージを確認
 
+4. **テストの失敗**
+   - 依存関係が正しくインストールされているか確認
+   - `python -m pytest tests/ -v` でテスト実行
+
 ### ログレベルの変更
 ```python
 # config/settings.py または直接コードで
@@ -181,6 +218,8 @@ logger.setLevel(logging.DEBUG)  # より詳細なログ
 - [ ] Google Translate API連携での日本語対応
 - [ ] Web UI での手動検証機能
 - [ ] 統計分析とトレンド機能
+- [ ] テストカバレッジの向上
+- [ ] CI/CD パイプラインの構築
 
 ## 📄 ライセンス
 
@@ -192,8 +231,13 @@ Issue報告やPull Requestを歓迎します。開発に参加する際は、以
 
 1. Forkしてfeatureブランチを作成
 2. 変更を実装
-3. テストを実行
+3. テストを実行: `./run_tests.py`
 4. Pull Requestを作成
+
+### 開発ガイドライン
+- 新機能には必ずテストを追加
+- コードスタイルは既存コードに合わせる
+- ログメッセージは日本語と英語を適切に使い分ける
 
 ---
 
