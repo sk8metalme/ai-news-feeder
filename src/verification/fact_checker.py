@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 from bs4 import BeautifulSoup
 from urllib.parse import quote
 from ..utils.logger import get_logger
+from ..utils.article_summarizer import ArticleSummarizer
 from config.settings import DEV_TO_API_URL, MEDIUM_RSS_URL
 
 logger = get_logger(__name__)
@@ -16,11 +17,13 @@ logger = get_logger(__name__)
 class FactChecker:
     """Class for fact-checking news articles against external sources"""
     
-    def __init__(self):
+    def __init__(self, enable_summarization: bool = True):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
         })
+        self.enable_summarization = enable_summarization
+        self.summarizer = ArticleSummarizer() if enable_summarization else None
     
     def search_dev_to(self, query: str) -> List[Dict]:
         """Search for related articles on dev.to"""
@@ -114,7 +117,7 @@ class FactChecker:
             return []
     
     def verify_article(self, title: str, url: str) -> Dict:
-        """Verify an article by searching for related content"""
+        """Verify an article by searching for related content and generating summary"""
         logger.info(f"Verifying article: {title}")
         
         # Extract key terms from title for search
@@ -139,6 +142,18 @@ class FactChecker:
             'total_related_count': total_related,
             'checked_at': time.strftime('%Y-%m-%d %H:%M:%S JST')
         }
+        
+        # Generate article summary if enabled
+        if self.enable_summarization and self.summarizer and self.summarizer.is_available():
+            logger.info(f"Generating summary for: {title}")
+            summary_result = self.summarizer.summarize_article(title, url)
+            result['summary'] = summary_result.get('summary')
+            result['summary_status'] = summary_result.get('summary_status')
+            if summary_result.get('error'):
+                result['summary_error'] = summary_result.get('error')
+        else:
+            result['summary'] = None
+            result['summary_status'] = 'disabled'
         
         logger.info(f"Verification result: {verification_status} ({total_related} related articles)")
         return result

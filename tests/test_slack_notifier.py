@@ -29,6 +29,7 @@ class TestSlackNotifier:
         assert "dev.to(1), Medium(1)" in result
         assert "https://example.com/chatgpt5-released" in result
         assert "2022-01-01 12:00:00 JST" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
     
     def test_format_verification_report_unverified(self):
         """Test formatting of unverified report"""
@@ -47,6 +48,7 @@ class TestSlackNotifier:
         assert "❌" in result  # Unverified status emoji
         assert "0 related articles found" in result
         assert "dev.to(0), Medium(0)" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
     
     @responses.activate
     def test_send_notification_success(self):
@@ -98,7 +100,7 @@ class TestSlackNotifier:
     
     def test_send_notification_no_webhook_url(self):
         """Test notification without webhook URL"""
-        notifier = SlackNotifier(webhook_url=None)
+        notifier = SlackNotifier(webhook_url="")  # Empty webhook URL
         result = notifier.send_notification("Test message")
         assert result is False
     
@@ -170,3 +172,39 @@ class TestSlackNotifier:
         
         assert "📊 Daily AI News Summary" in message
         assert "❌ No verified AI articles found today" in message
+    
+    def test_format_verification_report_with_summary(self):
+        """Test formatting of verification report with summary"""
+        verification_result_with_summary = {
+            "article_title": "AI Article with Summary",
+            "article_url": "https://example.com/ai-article",
+            "verification_status": "verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [{"title": "Related"}], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST",
+            "summary": "これはAI技術に関する重要な記事です。新しい機械学習手法について説明しています。",
+            "summary_status": "success"
+        }
+        
+        result = self.notifier.format_verification_report(verification_result_with_summary)
+        
+        assert "📝 **要約**:" in result
+        assert "これはAI技術に関する重要な記事です。" in result
+    
+    def test_format_verification_report_summary_failed(self):
+        """Test formatting of verification report with failed summary"""
+        verification_result_failed = {
+            "article_title": "AI Article",
+            "article_url": "https://example.com/ai-article",
+            "verification_status": "verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST",
+            "summary": None,
+            "summary_status": "failed",
+            "summary_error": "Claude CLI timeout"
+        }
+        
+        result = self.notifier.format_verification_report(verification_result_failed)
+        
+        assert "📝 **要約**: 生成失敗 (Claude CLI timeout)" in result

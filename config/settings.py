@@ -29,6 +29,11 @@ SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#ai-news")
 CHECK_INTERVAL_HOURS = 24
 MAX_ARTICLES_PER_DAY = 5
 
+# Article summarization settings
+ENABLE_SUMMARIZATION = os.getenv("ENABLE_SUMMARIZATION", "true").lower() == "true"
+CLAUDE_CLI_PATH = os.getenv("CLAUDE_CLI_PATH", "claude")
+SUMMARIZATION_TIMEOUT = int(os.getenv("SUMMARIZATION_TIMEOUT", "60"))  # seconds
+
 # File paths
 LOG_DIR = "logs"
 DATA_DIR = "data"

@@ -38,6 +38,25 @@ class SlackNotifier:
 🌐 **URL**: {article_url}
 ⏰ **Checked**: {checked_at}"""
         
+        # Add summary if available
+        summary = verification_result.get('summary')
+        summary_status = verification_result.get('summary_status', 'disabled')
+        
+        if summary_status == 'success' and summary:
+            message += f"""
+
+📝 **要約**:
+{summary}"""
+        elif summary_status == 'failed':
+            summary_error = verification_result.get('summary_error', '不明なエラー')
+            message += f"""
+
+📝 **要約**: 生成失敗 ({summary_error})"""
+        elif summary_status == 'disabled':
+            message += f"""
+
+📝 **要約**: Claude CLI未設定のため無効"""
+        
         return message
     
     def send_notification(self, message: str, channel: str = None) -> bool:

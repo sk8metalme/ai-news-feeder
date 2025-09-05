@@ -6,7 +6,8 @@ Hacker Newsで話題のAI関連ニュースの信憑性を検証し、信頼で�
 
 - **Hacker News監視**: AI関連キーワードでスコア上位記事を自動収集
 - **ファクトチェック**: dev.to、Mediumで関連記事を検索し信憑性を検証
-- **Slack自動投稿**: 検証済み記事を構造化フォーマットで通知
+- **📝 記事要約**: Claude CLIを使った日本語記事要約の自動生成 ✨NEW✨
+- **Slack自動投稿**: 検証済み記事と要約を構造化フォーマットで通知
 - **日次レポート**: JSON形式での詳細な分析レポートを生成
 - **自動スケジューリング**: cron または内蔵スケジューラーで定期実行
 
@@ -38,7 +39,23 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 SLACK_CHANNEL=#ai-news
 ```
 
-### 3. 実行方法
+### 3. Claude CLI設定（オプション - 記事要約機能）
+
+記事の日本語要約機能を有効にするには、Claude CLIをインストール・設定してください：
+
+1. Claude CLIをインストール: https://github.com/anthropics/claude-cli
+2. Claude CLIを設定: `claude configure`
+3. 環境変数を設定（オプション）:
+
+```env
+ENABLE_SUMMARIZATION=true
+CLAUDE_CLI_PATH=claude
+SUMMARIZATION_TIMEOUT=60
+```
+
+**注意**: Claude CLI未設定でも他の機能は正常に動作します。
+
+### 4. 実行方法
 
 #### 単発実行（テスト用）
 ```bash
@@ -69,8 +86,8 @@ python -m pytest tests/ -v
 ```
 
 ### テスト統計
-- **テスト数**: 56テスト
-- **カバレッジ**: 主要機能をカバー
+- **テスト数**: 71テスト (+15の要約機能テスト)
+- **カバレッジ**: 主要機能とClaude CLI統合をカバー
 - **テスト種類**: 単体テスト、統合テスト、エラーハンドリング
 
 ## 📁 プロジェクト構造
@@ -130,6 +147,12 @@ AI_KEYWORDS = [
 📚 Links: dev.to(2), Medium(1)
 🌐 URL: https://example.com/article
 ⏰ Checked: 2025/01/05 09:00 JST
+
+📝 要約:
+この記事はChatGPT-4oの新機能について説明しています。
+マルチモーダル対応と推論能力の向上が主なポイントです。
+従来モデルと比較して処理速度が50%向上し、より複雑な
+タスクに対応可能になりました。
 ```
 
 ## 🔧 カスタマイズ
@@ -165,10 +188,11 @@ def format_verification_report(self, verification_result: Dict) -> str:
 ## 🧪 テスト実行詳細
 
 ### テスト構成
-- **設定テスト**: 12テスト - 設定値とenv変数のテスト
+- **設定テスト**: 13テスト - 設定値、env変数、要約設定のテスト
+- **記事要約**: 12テスト - Claude CLI統合、要約生成、エラー処理 ✨NEW✨
+- **ファクトチェッカー**: 13テスト - dev.to/Medium検索、要約統合、検証ロジック
 - **Hacker News API**: 10テスト - API通信、フィルタリング、エラー処理
-- **ファクトチェッカー**: 10テスト - dev.to/Medium検索、検証ロジック
-- **Slack通知**: 8テスト - メッセージフォーマット、通知送信
+- **Slack通知**: 10テスト - 要約表示、メッセージフォーマット、通知送信
 - **レポート生成**: 6テスト - JSON生成、統計計算、ファイル保存
 - **スケジューラー**: 6テスト - ジョブ実行、エラーハンドリング、統合テスト
 - **メインアプリ**: 5テスト - CLI引数、例外処理

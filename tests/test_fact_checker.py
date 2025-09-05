@@ -161,6 +161,9 @@ class TestFactChecker:
     @patch.object(FactChecker, 'search_medium')
     def test_verify_article_verified(self, mock_medium, mock_dev_to):
         """Test article verification - verified case"""
+        # Create fact checker without summarization for this test
+        fact_checker = FactChecker(enable_summarization=False)
+        
         # Mock search results
         mock_dev_to.return_value = [
             {"title": "Related article", "url": "https://dev.to/article1", "source": "dev.to"}
@@ -169,7 +172,7 @@ class TestFactChecker:
             {"title": "Another related article", "url": "https://medium.com/article1", "source": "medium"}
         ]
         
-        result = self.fact_checker.verify_article(
+        result = fact_checker.verify_article(
             "ChatGPT-4 Released", 
             "https://example.com/chatgpt4"
         )
@@ -180,16 +183,20 @@ class TestFactChecker:
         assert len(result["related_articles"]["medium"]) == 1
         assert result["article_title"] == "ChatGPT-4 Released"
         assert result["article_url"] == "https://example.com/chatgpt4"
+        assert result["summary_status"] == "disabled"
     
     @patch.object(FactChecker, 'search_dev_to')
     @patch.object(FactChecker, 'search_medium')
     def test_verify_article_unverified(self, mock_medium, mock_dev_to):
         """Test article verification - unverified case"""
+        # Create fact checker without summarization for this test
+        fact_checker = FactChecker(enable_summarization=False)
+        
         # Mock no search results
         mock_dev_to.return_value = []
         mock_medium.return_value = []
         
-        result = self.fact_checker.verify_article(
+        result = fact_checker.verify_article(
             "Unknown AI News", 
             "https://example.com/unknown"
         )
@@ -198,3 +205,33 @@ class TestFactChecker:
         assert result["total_related_count"] == 0
         assert len(result["related_articles"]["dev_to"]) == 0
         assert len(result["related_articles"]["medium"]) == 0
+        assert result["summary_status"] == "disabled"
+    
+    @patch.object(FactChecker, 'search_dev_to')
+    @patch.object(FactChecker, 'search_medium')
+    def test_verify_article_with_summarization(self, mock_medium, mock_dev_to):
+        """Test article verification with summarization enabled"""
+        # Create fact checker with summarization enabled and mock the summarizer
+        fact_checker = FactChecker(enable_summarization=True)
+        
+        # Mock the summarizer directly on the instance
+        mock_summarizer = Mock()
+        mock_summarizer.is_available.return_value = True
+        mock_summarizer.summarize_article.return_value = {
+            'summary': 'これはAI記事の要約です。',
+            'summary_status': 'success'
+        }
+        fact_checker.summarizer = mock_summarizer
+        
+        # Mock search results
+        mock_dev_to.return_value = []
+        mock_medium.return_value = []
+        
+        result = fact_checker.verify_article(
+            "AI News", 
+            "https://example.com/ai-news"
+        )
+        
+        assert result["verification_status"] == "unverified"
+        assert result["summary"] == "これはAI記事の要約です。"
+        assert result["summary_status"] == "success"

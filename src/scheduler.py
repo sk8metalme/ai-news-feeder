@@ -10,7 +10,7 @@ from .verification.fact_checker import FactChecker
 from .notification.slack_notifier import SlackNotifier
 from .utils.report_generator import ReportGenerator
 from .utils.logger import get_logger
-from config.settings import CHECK_INTERVAL_HOURS, MAX_ARTICLES_PER_DAY
+from config.settings import CHECK_INTERVAL_HOURS, MAX_ARTICLES_PER_DAY, ENABLE_SUMMARIZATION
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,7 @@ class AINewsScheduler:
     
     def __init__(self):
         self.hn_api = HackerNewsAPI()
-        self.fact_checker = FactChecker()
+        self.fact_checker = FactChecker(enable_summarization=ENABLE_SUMMARIZATION)
         self.slack_notifier = SlackNotifier()
         self.report_generator = ReportGenerator()
         
