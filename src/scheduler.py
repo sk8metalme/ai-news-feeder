@@ -43,6 +43,7 @@ class AINewsScheduler:
             # Limit to MAX_ARTICLES_PER_DAY
             stories_to_verify = ai_stories[:MAX_ARTICLES_PER_DAY]
             verification_results = []
+            skipped_articles = []
             
             for story in stories_to_verify:
                 title = story.get('title', 'No title')
@@ -51,6 +52,13 @@ class AINewsScheduler:
                 # Verify the article
                 result = self.fact_checker.verify_article(title, url)
                 result['hacker_news_score'] = story.get('score', 0)
+                
+                # Check if article should be skipped
+                if result.get('skip_reason'):
+                    logger.info(f"Skipping article: {title} (reason: {result.get('skip_reason')})")
+                    skipped_articles.append(result)
+                    continue
+                
                 verification_results.append(result)
                 
                 # Send individual notification for verified articles
@@ -72,10 +80,13 @@ class AINewsScheduler:
             
             stats = self.report_generator.generate_summary_stats(verification_results)
             
+            total_found = len(ai_stories)
+            total_skipped = len(skipped_articles)
+            
             logger.info(f"Verification job completed in {duration:.2f} seconds")
-            logger.info(f"Processed {stats['total_articles']} articles, "
-                       f"verified {stats['verified_articles']} "
-                       f"({stats['verification_rate']}%)")
+            logger.info(f"Found {total_found} AI stories, processed {stats['total_articles']} articles, skipped {total_skipped} articles")
+            logger.info(f"Verified {stats['verified_articles']} articles "
+                       f"({stats['verification_rate']}% of processed articles)")
             
         except Exception as e:
             logger.error(f"Error in verification job: {e}")

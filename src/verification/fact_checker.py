@@ -151,6 +151,12 @@ class FactChecker:
             result['summary_status'] = summary_result.get('summary_status')
             if summary_result.get('error'):
                 result['summary_error'] = summary_result.get('error')
+                
+            # Skip articles with content extraction issues
+            if (summary_result.get('summary_status') == 'failed' and 
+                summary_result.get('error') == 'Failed to fetch article content'):
+                logger.info(f"Skipping article due to content extraction failure: {title}")
+                result['skip_reason'] = 'content_extraction_failed'
         else:
             result['summary'] = None
             result['summary_status'] = 'disabled'

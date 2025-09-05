@@ -75,8 +75,10 @@ class ArticleSummarizer:
             lines = (line.strip() for line in content.splitlines())
             content = '\\n'.join(line for line in lines if len(line) > 10)  # Filter out short lines
             
-            if len(content) < 100:
-                logger.warning(f"Extracted content too short ({len(content)} chars): {url}")
+            # Check minimum content length for meaningful summarization
+            min_content_length = 200  # Increased minimum length
+            if len(content) < min_content_length:
+                logger.warning(f"Extracted content too short ({len(content)} chars, minimum: {min_content_length}): {url}")
                 return None
             
             logger.info(f"Successfully extracted {len(content)} characters from {url}")
@@ -88,19 +90,16 @@ class ArticleSummarizer:
     
     def _create_summary_prompt(self, title: str, content: str) -> str:
         """Create a prompt for Claude to summarize the article"""
-        prompt = f"""以下のAI関連記事を日本語で要約してください。
+        # Truncate content if too long to avoid CLI argument limits
+        max_content_length = 2000
+        if len(content) > max_content_length:
+            content = content[:max_content_length] + "..."
+        
+        prompt = f"""この記事を日本語で3-4文に要約してください。
 
-記事タイトル: {title}
+タイトル: {title}
 
-記事内容:
-{content}
-
-要約の要件:
-1. 3-4文で簡潔にまとめる
-2. 技術的なポイントを含める
-3. なぜ重要なのかを説明する
-4. 日本語で出力する
-5. 専門用語は適度に説明を加える
+内容: {content}
 
 要約:"""
         return prompt
@@ -108,34 +107,21 @@ class ArticleSummarizer:
     def _call_claude_cli(self, prompt: str) -> Optional[str]:
         """Call Claude CLI with the given prompt"""
         try:
-            # Create temporary file for the prompt
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(prompt)
-                prompt_file = f.name
+            # Call Claude CLI with --print option for non-interactive mode
+            result = subprocess.run(
+                [self.claude_cli_path, "--print", prompt],
+                capture_output=True,
+                text=True,
+                timeout=60  # 1 minute timeout
+            )
             
-            try:
-                # Call Claude CLI
-                result = subprocess.run(
-                    [self.claude_cli_path, "chat", "--file", prompt_file],
-                    capture_output=True,
-                    text=True,
-                    timeout=60  # 1 minute timeout
-                )
-                
-                if result.returncode == 0:
-                    summary = result.stdout.strip()
-                    logger.info(f"Claude CLI summary generated: {len(summary)} characters")
-                    return summary
-                else:
-                    logger.error(f"Claude CLI failed: {result.stderr}")
-                    return None
-                    
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(prompt_file)
-                except OSError:
-                    pass
+            if result.returncode == 0:
+                summary = result.stdout.strip()
+                logger.info(f"Claude CLI summary generated: {len(summary)} characters")
+                return summary
+            else:
+                logger.error(f"Claude CLI failed: {result.stderr}")
+                return None
                     
         except subprocess.TimeoutExpired:
             logger.error("Claude CLI call timed out")
