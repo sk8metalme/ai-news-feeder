@@ -160,11 +160,11 @@ class TestFactChecker:
     @patch.object(FactChecker, 'search_dev_to')
     @patch.object(FactChecker, 'search_medium')
     def test_verify_article_verified(self, mock_medium, mock_dev_to):
-        """Test article verification - verified case"""
+        """Test article verification - verified case (2+ articles)"""
         # Create fact checker without summarization for this test
         fact_checker = FactChecker(enable_summarization=False)
         
-        # Mock search results
+        # Mock search results - 2 articles for verified status
         mock_dev_to.return_value = [
             {"title": "Related article", "url": "https://dev.to/article1", "source": "dev.to"}
         ]
@@ -181,8 +181,31 @@ class TestFactChecker:
         assert result["total_related_count"] == 2
         assert len(result["related_articles"]["dev_to"]) == 1
         assert len(result["related_articles"]["medium"]) == 1
-        assert result["article_title"] == "ChatGPT-4 Released"
-        assert result["article_url"] == "https://example.com/chatgpt4"
+    
+    @patch.object(FactChecker, 'search_dev_to')
+    @patch.object(FactChecker, 'search_medium')
+    def test_verify_article_partially_verified(self, mock_medium, mock_dev_to):
+        """Test article verification - partially verified case (1 article)"""
+        # Create fact checker without summarization for this test
+        fact_checker = FactChecker(enable_summarization=False)
+        
+        # Mock search results - 1 article for partially verified status
+        mock_dev_to.return_value = [
+            {"title": "Related article", "url": "https://dev.to/article1", "source": "dev.to"}
+        ]
+        mock_medium.return_value = []
+        
+        result = fact_checker.verify_article(
+            "AI News Title", 
+            "https://example.com/ai-news"
+        )
+        
+        assert result["verification_status"] == "partially_verified"
+        assert result["total_related_count"] == 1
+        assert len(result["related_articles"]["dev_to"]) == 1
+        assert len(result["related_articles"]["medium"]) == 0
+        assert result["article_title"] == "AI News Title"
+        assert result["article_url"] == "https://example.com/ai-news"
         assert result["summary_status"] == "disabled"
     
     @patch.object(FactChecker, 'search_dev_to')

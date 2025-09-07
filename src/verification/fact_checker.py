@@ -40,7 +40,7 @@ class FactChecker:
             articles = response.json()
             related_articles = []
             
-            # Simple keyword matching
+            # Improved keyword matching with scoring
             query_words = set(query.lower().split())
             
             for article in articles:
@@ -50,13 +50,28 @@ class FactChecker:
                 
                 content = f"{title} {description} {tags}"
                 
-                # Check if query words are in the article content
-                if any(word in content for word in query_words if len(word) > 3):
+                # Calculate relevance score
+                relevance_score = 0
+                for word in query_words:
+                    if len(word) > 3:
+                        # Higher score for title matches
+                        if word in title:
+                            relevance_score += 3
+                        # Medium score for description matches
+                        elif word in description:
+                            relevance_score += 2
+                        # Lower score for tag matches
+                        elif word in tags:
+                            relevance_score += 1
+                
+                # Only include articles with sufficient relevance
+                if relevance_score >= 2:
                     related_articles.append({
                         'title': article.get('title'),
                         'url': article.get('url'),
                         'source': 'dev.to',
-                        'published_at': article.get('published_at')
+                        'published_at': article.get('published_at'),
+                        'relevance_score': relevance_score
                     })
             
             return related_articles
@@ -89,8 +104,16 @@ class FactChecker:
                             title_elem = item.find('title')
                             title_text = title_elem.text if title_elem is not None else ''
                             
-                            # Simple keyword matching
-                            if any(word in title_text.lower() for word in query_words if len(word) > 3):
+                            # Improved keyword matching with scoring
+                            relevance_score = 0
+                            title_lower = title_text.lower()
+                            
+                            for word in query_words:
+                                if len(word) > 3 and word in title_lower:
+                                    relevance_score += 3  # Higher score for title matches
+                            
+                            # Only include articles with sufficient relevance
+                            if relevance_score >= 3:
                                 link_elem = item.find('link')
                                 pub_date_elem = item.find('pubDate')
                                 
@@ -98,7 +121,8 @@ class FactChecker:
                                     'title': title_text,
                                     'url': link_elem.text if link_elem is not None else '',
                                     'source': 'medium',
-                                    'published_at': pub_date_elem.text if pub_date_elem is not None else ''
+                                    'published_at': pub_date_elem.text if pub_date_elem is not None else '',
+                                    'relevance_score': relevance_score
                                 })
                     except ET.ParseError as parse_error:
                         logger.warning(f"Failed to parse XML for tag {tag}: {parse_error}")
@@ -127,9 +151,16 @@ class FactChecker:
         dev_to_articles = self.search_dev_to(search_query)
         medium_articles = self.search_medium(search_query)
         
-        # Calculate verification score
+        # Calculate verification score with improved criteria
         total_related = len(dev_to_articles) + len(medium_articles)
-        verification_status = "verified" if total_related >= 1 else "unverified"
+        
+        # More nuanced verification logic
+        if total_related >= 2:
+            verification_status = "verified"
+        elif total_related == 1:
+            verification_status = "partially_verified"
+        else:
+            verification_status = "unverified"
         
         result = {
             'article_title': title,

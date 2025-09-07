@@ -50,6 +50,25 @@ class TestSlackNotifier:
         assert "dev.to(0), Medium(0)" in result
         assert "Claude CLI未設定のため無効" in result  # Default summarization status
     
+    def test_format_verification_report_partially_verified(self):
+        """Test formatting of partially verified report"""
+        partially_verified_result = {
+            "article_title": "Partially Verified AI News",
+            "article_url": "https://example.com/partially-verified",
+            "verification_status": "partially_verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [{"title": "Related"}], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST"
+        }
+        
+        result = self.notifier.format_verification_report(partially_verified_result)
+        
+        assert "📊 AI News Verification Report" in result
+        assert "🟡" in result  # Partially verified status emoji
+        assert "1 related articles found" in result
+        assert "dev.to(1), Medium(0)" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
+    
     @responses.activate
     def test_send_notification_success(self):
         """Test successful notification sending"""

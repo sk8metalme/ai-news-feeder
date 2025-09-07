@@ -14,7 +14,7 @@ class SlackNotifier:
     """Class for sending notifications to Slack"""
     
     def __init__(self, webhook_url: str = None):
-        self.webhook_url = webhook_url or SLACK_WEBHOOK_URL
+        self.webhook_url = webhook_url if webhook_url is not None else SLACK_WEBHOOK_URL
         
     def format_verification_report(self, verification_result: Dict) -> str:
         """Format verification result into Slack message"""
@@ -28,7 +28,12 @@ class SlackNotifier:
         medium_count = len(verification_result.get('related_articles', {}).get('medium', []))
         
         # Create status emoji
-        status_emoji = "✅" if status == "verified" else "❌"
+        if status == "verified":
+            status_emoji = "✅"
+        elif status == "partially_verified":
+            status_emoji = "🟡"
+        else:
+            status_emoji = "❌"
         
         message = f"""📊 AI News Verification Report
 {status_emoji} **Topic**: {article_title}
@@ -61,7 +66,7 @@ class SlackNotifier:
     
     def send_notification(self, message: str, channel: str = None) -> bool:
         """Send a message to Slack"""
-        if not self.webhook_url:
+        if not self.webhook_url or self.webhook_url.strip() == "":
             logger.error("Slack webhook URL not configured")
             return False
         
@@ -100,20 +105,26 @@ class SlackNotifier:
         else:
             verified_count = sum(1 for result in verification_results 
                                if result.get('verification_status') == 'verified')
+            partially_verified_count = sum(1 for result in verification_results 
+                                         if result.get('verification_status') == 'partially_verified')
             total_count = len(verification_results)
+            unverified_count = total_count - verified_count - partially_verified_count
             
             message = f"""📊 Daily AI News Summary
 📈 **Total Articles Processed**: {total_count}
 ✅ **Verified Articles**: {verified_count}
-❌ **Unverified Articles**: {total_count - verified_count}
+🟡 **Partially Verified Articles**: {partially_verified_count}
+❌ **Unverified Articles**: {unverified_count}
 
-**Verified Articles:**"""
+**Verified & Partially Verified Articles:**"""
             
             for result in verification_results:
-                if result.get('verification_status') == 'verified':
+                status = result.get('verification_status')
+                if status in ['verified', 'partially_verified']:
                     title = result.get('article_title', 'Unknown')
                     url = result.get('article_url', '')
                     count = result.get('total_related_count', 0)
-                    message += f"\n• {title} ({count} sources) - {url}"
+                    emoji = "✅" if status == "verified" else "🟡"
+                    message += f"\n{emoji} {title} ({count} sources) - {url}"
         
         return self.send_notification(message, channel)

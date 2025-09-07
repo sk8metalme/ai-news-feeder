@@ -51,9 +51,11 @@ class TestArticleSummarizer:
             <body>
                 <article>
                     <h1>Test Article Title</h1>
-                    <p>This is a test article about AI and machine learning.</p>
-                    <p>It contains multiple paragraphs with meaningful content.</p>
-                    <p>The content should be long enough to pass the length check.</p>
+                    <p>This is a test article about AI and machine learning technology that is revolutionizing the world.</p>
+                    <p>It contains multiple paragraphs with meaningful content that discusses various aspects of artificial intelligence.</p>
+                    <p>The content should be long enough to pass the length check of 200 characters minimum requirement.</p>
+                    <p>This additional paragraph ensures we have sufficient content for proper testing and validation.</p>
+                    <p>Machine learning algorithms are becoming increasingly sophisticated and powerful in their applications.</p>
                 </article>
             </body>
         </html>
@@ -72,7 +74,7 @@ class TestArticleSummarizer:
         assert result is not None
         assert "Test Article Title" in result
         assert "AI and machine learning" in result
-        assert len(result) > 100
+        assert len(result) > 200
     
     @responses.activate 
     def test_fetch_article_content_short_content(self):
@@ -116,19 +118,12 @@ class TestArticleSummarizer:
         
         assert title in prompt
         assert content in prompt
-        assert "要約の要件" in prompt
-        assert "日本語で出力" in prompt
+        assert "この記事を日本語で3-4文に要約してください" in prompt
+        assert "要約:" in prompt
     
-    @patch('tempfile.NamedTemporaryFile')
     @patch('subprocess.run')
-    @patch('os.unlink')
-    def test_call_claude_cli_success(self, mock_unlink, mock_run, mock_tempfile):
+    def test_call_claude_cli_success(self, mock_run):
         """Test successful Claude CLI call"""
-        # Mock temporary file
-        mock_file = Mock()
-        mock_file.name = "/tmp/test_prompt.txt"
-        mock_tempfile.return_value.__enter__.return_value = mock_file
-        
         # Mock subprocess success
         mock_run.return_value = Mock(
             returncode=0,
@@ -140,22 +135,15 @@ class TestArticleSummarizer:
         
         assert result == "これはテスト要約です。AI技術について説明しています。"
         mock_run.assert_called_once_with(
-            ["claude", "chat", "--file", "/tmp/test_prompt.txt"],
+            ["claude", "--print", "Test prompt for summarization"],
             capture_output=True,
             text=True,
             timeout=60
         )
     
-    @patch('tempfile.NamedTemporaryFile')
     @patch('subprocess.run')
-    @patch('os.unlink')
-    def test_call_claude_cli_failure(self, mock_unlink, mock_run, mock_tempfile):
+    def test_call_claude_cli_failure(self, mock_run):
         """Test Claude CLI call failure"""
-        # Mock temporary file
-        mock_file = Mock()
-        mock_file.name = "/tmp/test_prompt.txt"
-        mock_tempfile.return_value.__enter__.return_value = mock_file
-        
         # Mock subprocess failure
         mock_run.return_value = Mock(
             returncode=1,
