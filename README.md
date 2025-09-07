@@ -1,207 +1,268 @@
-# AI News Feeder 🤖📰
+# AI News Feeder
 
-AI関連ニュースの信憑性を自動検証し、Slackに配信するボットです。
+Hacker Newsで話題のAI関連ニュースの信憑性を検証し、信頼できる情報をSlackに自動配信するPythonアプリケーション。
 
-## 🎯 概要
+## 📊 機能概要
 
-AI News Feederは、Hacker Newsで話題のAI関連ニュースを自動的に収集し、dev.toやMediumで関連記事を検索して信憑性を検証します。検証済みの記事は構造化されたレポート形式でSlackに自動投稿されます。
-
-## ✨ 主な機能
-
-- **自動収集**: Hacker NewsからAI関連記事を毎日自動収集
-- **信憑性検証**: dev.to、Mediumで関連記事を検索して検証
-- **Slack通知**: 検証済み記事を美しいフォーマットで自動投稿
-- **キーワードフィルタリング**: ChatGPT、Claude、AI、LLMなどのキーワードで絞り込み
-- **スコアフィルタリング**: 高評価記事のみを選別（デフォルト: 50点以上）
+- **Hacker News監視**: AI関連キーワードでスコア上位記事を自動収集
+- **ファクトチェック**: dev.to、Mediumで関連記事を検索し信憑性を検証
+- **📝 記事要約**: Claude CLIを使った日本語記事要約の自動生成 ✨NEW✨
+- **Slack自動投稿**: 検証済み記事と要約を構造化フォーマットで通知
+- **日次レポート**: JSON形式での詳細な分析レポートを生成
+- **自動スケジューリング**: cron または内蔵スケジューラーで定期実行
 
 ## 🚀 クイックスタート
 
-### 1. セットアップ
+### 1. 環境セットアップ
 
 ```bash
 # リポジトリのクローン
-git clone https://github.com/yourusername/ai-news-feeder.git
+git clone <repository-url>
 cd ai-news-feeder
 
-# セットアップスクリプトの実行
-chmod +x setup.sh
-./setup.sh
+# Pythonの依存関係をインストール
+pip install -r requirements.txt
+
+# 環境変数を設定
+cp env.example .env
+# .envファイルを編集してSlack Webhook URLを設定
 ```
 
-### 2. 環境設定
+### 2. Slack Webhook設定
 
-`.env`ファイルを編集してSlack Webhook URLを設定:
+1. Slack Appを作成: https://api.slack.com/apps
+2. Incoming Webhookを有効化
+3. Webhook URLを`.env`ファイルに設定:
 
 ```env
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+SLACK_CHANNEL=#ai-news
 ```
 
-### 3. テスト実行
+### 3. Claude CLI設定（オプション - 記事要約機能）
+
+記事の日本語要約機能を有効にするには、Claude CLIをインストール・設定してください：
+
+1. Claude CLIをインストール: https://github.com/anthropics/claude-cli
+2. Claude CLIを設定: `claude configure`
+3. 環境変数を設定（オプション）:
+
+```env
+ENABLE_SUMMARIZATION=true
+CLAUDE_CLI_PATH=claude
+SUMMARIZATION_TIMEOUT=60
+```
+
+**注意**: Claude CLI未設定でも他の機能は正常に動作します。
+
+### 4. 実行方法
+
+#### 単発実行（テスト用）
+```bash
+python main.py --run-once
+```
+
+#### スケジューラー実行
+```bash
+python main.py --schedule
+```
+
+#### cron設定（推奨）
+```bash
+./install_cron.sh
+```
+
+## 🧪 テスト実行
 
 ```bash
-# 仮想環境を有効化
-source venv/bin/activate
+# 全テストを実行
+python -m pytest tests/ -v
 
-# テスト実行
-python main.py
+# または専用スクリプトを使用
+./run_tests.py
+
+# 特定のテストモジュールのみ実行
+./run_tests.py hacker_news_api
 ```
 
-### 4. 定期実行の設定
+### テスト統計
+- **テスト数**: 71テスト (+15の要約機能テスト)
+- **カバレッジ**: 主要機能とClaude CLI統合をカバー
+- **テスト種類**: 単体テスト、統合テスト、エラーハンドリング
 
-```bash
-# cronジョブの設定（毎日9時に実行）
-./scripts/setup_cron.sh
-```
-
-## 📋 設定オプション
-
-`.env`ファイルで以下の設定が可能です:
-
-| 設定項目 | 説明 | デフォルト値 |
-|---------|------|------------|
-| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL | （必須） |
-| `ARTICLES_PER_DAY` | 1日に投稿する記事数 | 5 |
-| `MINIMUM_SCORE` | Hacker Newsの最低スコア | 50 |
-| `RUN_HOUR` | 実行時刻（24時間形式） | 9 |
-| `FACTCHECK_MIN_SOURCES` | 最低限必要な関連記事数 | 1 |
-| `FACTCHECK_MIN_DEV_TO` | dev.toの最低記事数 | 0 |
-| `FACTCHECK_MIN_MEDIUM` | Mediumの最低記事数 | 0 |
-| `FACTCHECK_CONFIDENCE_THRESHOLD` | 信頼度閾値（0.0-1.0） | 0.5 |
-
-## 📊 投稿フォーマット
-
-Slackに投稿される記事は以下のような形式です:
-
-```
-📊 AI News Verification Report
-Date: 2025/09/05 09:00 JST
-━━━━━━━━━━━━━━━━━━━━━━━━
-Topic: ChatGPT-4o Achieves New Benchmark in Reasoning
-Source: Hacker News (Score: 256)
-✅ Verified: 3 related articles found
-Confidence: 🟢 High (0.85)
-Links: dev.to(2), Medium(1)
-URL: View Article
-Checked: 2025/09/05 09:00 JST
-━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-## 🔍 検証ロジック
-
-1. **記事収集**: Hacker News APIから過去24時間のトップ記事を取得
-2. **AIフィルタリング**: タイトルにAI関連キーワードが含まれる記事を抽出
-3. **スコアフィルタリング**: 設定されたスコア以上の記事のみを選択
-4. **信憑性検証**: dev.toとMediumで関連記事を検索
-5. **信頼度計算**: 記事数、ソースの多様性から0.0-1.0のスコアを算出
-6. **判定**: 設定された基準（記事数、信頼度閾値）を満たせば「検証済み」と判定
-
-### 📈 信頼度レベル
-- 🟢 **High** (0.8以上): 複数のソースから多数の関連記事
-- 🟡 **Medium** (0.5-0.8): 適度な数の関連記事
-- 🔴 **Low** (0.5未満): 関連記事が少ない
-
-## 🛠️ 技術スタック
-
-- **言語**: Python 3.x
-- **主要ライブラリ**: 
-  - requests: HTTP通信
-  - beautifulsoup4: HTMLパース
-  - feedparser: RSS解析
-  - schedule: スケジューリング
-- **外部API**:
-  - Hacker News API
-  - dev.to API
-  - Medium RSS Feed
-
-## 📁 プロジェクト構成
+## 📁 プロジェクト構造
 
 ```
 ai-news-feeder/
+├── main.py                 # メインエントリーポイント
+├── requirements.txt        # Python依存関係
+├── install_cron.sh        # cron設定スクリプト
+├── run_tests.py           # テスト実行スクリプト
+├── pytest.ini            # pytest設定
+├── config/
+│   └── settings.py        # 設定ファイル
 ├── src/
-│   ├── api/              # API クライアント
-│   │   ├── hackernews_api.py
-│   │   └── factcheck_api.py
-│   ├── processing/       # メイン処理ロジック
-│   │   └── news_processor.py
-│   └── utils/           # ユーティリティ
-│       ├── config.py
-│       └── slack_notifier.py
-├── scripts/             # 実行スクリプト
-│   └── setup_cron.sh
-├── reports/            # レポート保存用（自動生成）
-├── logs/               # ログファイル（自動生成）
-├── main.py             # エントリーポイント
-├── requirements.txt    # 依存関係
-├── setup.sh           # セットアップスクリプト
-├── .env.example       # 環境変数サンプル
-└── README.md          # このファイル
+│   ├── api/
+│   │   └── hacker_news.py # Hacker News API
+│   ├── verification/
+│   │   └── fact_checker.py # ファクトチェック機能
+│   ├── notification/
+│   │   └── slack_notifier.py # Slack通知
+│   ├── utils/
+│   │   ├── logger.py      # ログ機能
+│   │   └── report_generator.py # レポート生成
+│   └── scheduler.py       # スケジューラー
+├── tests/                 # テストファイル
+│   ├── conftest.py       # pytest設定とフィクスチャ
+│   ├── test_*.py         # 各種テストファイル
+├── logs/                 # ログファイル
+├── data/                 # JSON レポート
+└── .gitignore           # Git除外設定
 ```
 
-## 🔧 トラブルシューティング
+## ⚙️ 設定
 
-### Slack通知が届かない
-- `.env`ファイルのWebhook URLが正しいか確認
-- Slackワークスペースの権限設定を確認
+### キーワード設定
+`config/settings.py`でAI関連キーワードをカスタマイズ可能:
 
-### 記事が見つからない
-- AIキーワードの設定を確認（`src/utils/config.py`）
-- スコア閾値を下げてみる（`MINIMUM_SCORE`）
+```python
+AI_KEYWORDS = [
+    "ChatGPT", "Claude", "AI", "LLM", "OpenAI", "Google AI",
+    "artificial intelligence", "machine learning", "deep learning"
+]
+```
 
-### エラーログの確認
+### 検証設定
+- **スコア閾値**: 50点以上のHacker News記事を対象
+- **記事数制限**: 1日最大5件の記事を投稿
+- **検証間隔**: 24時間ごとに実行
+
+## 📈 投稿フォーマット
+
+```
+📊 AI News Verification Report
+✅ Topic: ChatGPT-4o: The Next Generation of AI
+🔗 Source: Hacker News (Score: 152)
+📈 Verified: 3 related articles found
+📚 Links: dev.to(2), Medium(1)
+🌐 URL: https://example.com/article
+⏰ Checked: 2025/01/05 09:00 JST
+
+📝 要約:
+この記事はChatGPT-4oの新機能について説明しています。
+マルチモーダル対応と推論能力の向上が主なポイントです。
+従来モデルと比較して処理速度が50%向上し、より複雑な
+タスクに対応可能になりました。
+```
+
+## 🔧 カスタマイズ
+
+### 検証ロジックの調整
+`src/verification/fact_checker.py`で検証条件を変更可能:
+
+```python
+# 検証合格条件を変更（現在: 1件以上の関連記事）
+verification_status = "verified" if total_related >= 1 else "unverified"
+```
+
+### 通知フォーマットの変更
+`src/notification/slack_notifier.py`でメッセージ形式をカスタマイズ:
+
+```python
+def format_verification_report(self, verification_result: Dict) -> str:
+    # カスタムフォーマットを実装
+```
+
+## 📊 ログとレポート
+
+### ログファイル
+- 場所: `logs/ai_news_feeder_YYYYMMDD.log`
+- レベル: INFO以上
+- ローテーション: 日次
+
+### JSONレポート
+- 場所: `data/ai_news_report_YYYYMMDD.json`
+- 内容: 検証結果の詳細データ
+- 形式: 構造化JSON
+
+## 🧪 テスト実行詳細
+
+### テスト構成
+- **設定テスト**: 13テスト - 設定値、env変数、要約設定のテスト
+- **記事要約**: 12テスト - Claude CLI統合、要約生成、エラー処理 ✨NEW✨
+- **ファクトチェッカー**: 13テスト - dev.to/Medium検索、要約統合、検証ロジック
+- **Hacker News API**: 10テスト - API通信、フィルタリング、エラー処理
+- **Slack通知**: 10テスト - 要約表示、メッセージフォーマット、通知送信
+- **レポート生成**: 6テスト - JSON生成、統計計算、ファイル保存
+- **スケジューラー**: 6テスト - ジョブ実行、エラーハンドリング、統合テスト
+- **メインアプリ**: 5テスト - CLI引数、例外処理
+
+### テスト実行例
 ```bash
-tail -f ai_news_feeder.log
+# 全テスト実行
+python -m pytest tests/ -v
+
+# 特定モジュールのテスト
+python -m pytest tests/test_hacker_news_api.py -v
+
+# カバレッジレポート付き（pytest-covがインストールされている場合）
+python -m pytest tests/ --cov=src --cov-report=term-missing
 ```
 
-## 🏥 運用監視機能
+## 🔍 トラブルシューティング
 
-### ヘルスチェック
-システムの健康状態を監視：
-```bash
-# 単発チェック
-python scripts/health_monitor.py --check
+### よくある問題
 
-# 継続監視（30分間隔）
-python scripts/health_monitor.py --monitor --interval 30
+1. **Slack通知が送信されない**
+   - Webhook URLが正しく設定されているか確認
+   - ネットワーク接続を確認
 
-# ヘルスチェック履歴
-python scripts/health_monitor.py --history
+2. **記事が見つからない**
+   - AI_KEYWORDSの設定を確認
+   - SCORE_THRESHOLDを下げて試行
+
+3. **外部API エラー**
+   - レート制限に引っかかっている可能性
+   - ログで詳細なエラーメッセージを確認
+
+4. **テストの失敗**
+   - 依存関係が正しくインストールされているか確認
+   - `python -m pytest tests/ -v` でテスト実行
+
+### ログレベルの変更
+```python
+# config/settings.py または直接コードで
+logger.setLevel(logging.DEBUG)  # より詳細なログ
 ```
 
-### 異常検知・アラート
-自動的に以下を検知してSlack通知：
-- 連続実行失敗（3回以上）
-- 記事数不足
-- パフォーマンス劣化
+## 🛣️ 今後の開発予定
 
-### 統計レポート
-```bash
-# 日次レポート
-python scripts/statistics_report.py --daily
+- [ ] Reddit API、GitHub Trending対応
+- [ ] 3段階信憑性評価（高/中/低）
+- [ ] Google Translate API連携での日本語対応
+- [ ] Web UI での手動検証機能
+- [ ] 統計分析とトレンド機能
+- [ ] テストカバレッジの向上
+- [ ] CI/CD パイプラインの構築
 
-# 週次レポート
-python scripts/statistics_report.py --weekly
-
-# Slackダッシュボード送信
-python scripts/statistics_report.py --slack
-```
-
-## 🚧 今後の機能拡張予定
-
-- [ ] Reddit API連携
-- [ ] GitHub Trending連携
-- [ ] 高度な信憑性判定（3段階評価）
-- [ ] 日本語要約機能
-- [ ] Web UI管理画面
-- [ ] 複数チャンネル対応
-
-## 📝 ライセンス
+## 📄 ライセンス
 
 MIT License
 
 ## 🤝 コントリビューション
 
-プルリクエストを歓迎します！大きな変更の場合は、まずissueを作成して変更内容について議論してください。
+Issue報告やPull Requestを歓迎します。開発に参加する際は、以下の手順でお願いします:
 
-## 📧 お問い合わせ
+1. Forkしてfeatureブランチを作成
+2. 変更を実装
+3. テストを実行: `./run_tests.py`
+4. Pull Requestを作成
 
-質問や提案がある場合は、GitHubのissueを作成してください。
+### 開発ガイドライン
+- 新機能には必ずテストを追加
+- コードスタイルは既存コードに合わせる
+- ログメッセージは日本語と英語を適切に使い分ける
+
+---
+
+**注意**: 本ツールは個人使用を想定しています。大規模運用時は各APIの利用制限にご注意ください。

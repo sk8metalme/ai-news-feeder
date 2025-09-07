@@ -1,427 +1,308 @@
-"""ヘルスチェック機能モジュール"""
-import time
-import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+"""
+Health checker module for monitoring system status
+"""
 import requests
-from dataclasses import dataclass, asdict
-import json
-import os
+import subprocess
+import time
+from typing import Dict, List
+from .logger import get_logger
+from config.settings import HACKER_NEWS_API_URL, DEV_TO_API_URL
 
-from src.utils.config import Config
-from src.api.hackernews_api import HackerNewsAPI
-from src.api.factcheck_api import FactCheckAPI
-from src.utils.slack_notifier import SlackNotifier
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ComponentHealth:
-    """コンポーネントの健康状態"""
-    name: str
-    status: str  # "healthy", "degraded", "unhealthy"
-    message: str
-    last_check: datetime
-    response_time_ms: Optional[float] = None
-    details: Optional[Dict] = None
-
-
-@dataclass
-class SystemHealth:
-    """システム全体の健康状態"""
-    status: str  # "healthy", "degraded", "unhealthy"
-    timestamp: datetime
-    components: List[ComponentHealth]
-    checks_passed: int
-    checks_total: int
-    uptime_hours: Optional[float] = None
-    last_successful_run: Optional[datetime] = None
+logger = get_logger(__name__)
 
 
 class HealthChecker:
-    """システムヘルスチェック管理クラス"""
-    
-    # ヘルスチェック結果ファイル
-    HEALTH_FILE = "health_status.json"
-    HISTORY_FILE = "health_history.json"
+    """Class for checking system health and component availability"""
     
     def __init__(self):
-        self.start_time = datetime.now()
-        self.hn_api = HackerNewsAPI()
-        self.fc_api = FactCheckAPI()
-        self.slack_notifier = SlackNotifier()
-        
-        # ヘルスチェック履歴
-        self.history = []
-        self._load_history()
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        })
     
-    def check_all(self) -> SystemHealth:
-        """全コンポーネントのヘルスチェックを実行"""
-        logger.info("ヘルスチェック開始")
-        
-        components = []
-        
-        # 各コンポーネントをチェック
-        components.append(self._check_hackernews_api())
-        components.append(self._check_devto_api())
-        components.append(self._check_medium_rss())
-        components.append(self._check_slack_webhook())
-        components.append(self._check_file_system())
-        components.append(self._check_config())
-        
-        # 全体のステータスを判定
-        unhealthy_count = sum(1 for c in components if c.status == "unhealthy")
-        degraded_count = sum(1 for c in components if c.status == "degraded")
-        
-        if unhealthy_count > 0:
-            overall_status = "unhealthy"
-        elif degraded_count > 0:
-            overall_status = "degraded"
-        else:
-            overall_status = "healthy"
-        
-        # アップタイムを計算
-        uptime_hours = (datetime.now() - self.start_time).total_seconds() / 3600
-        
-        # 最後の成功実行時刻を取得
-        last_successful_run = self._get_last_successful_run()
-        
-        health = SystemHealth(
-            status=overall_status,
-            timestamp=datetime.now(),
-            components=components,
-            checks_passed=len(components) - unhealthy_count,
-            checks_total=len(components),
-            uptime_hours=uptime_hours,
-            last_successful_run=last_successful_run
-        )
-        
-        # 結果を保存
-        self._save_health_status(health)
-        self._add_to_history(health)
-        
-        logger.info(f"ヘルスチェック完了: {overall_status}")
-        
-        return health
-    
-    def _check_hackernews_api(self) -> ComponentHealth:
-        """Hacker News APIの接続チェック"""
-        name = "Hacker News API"
-        start_time = time.time()
-        
+    def check_hacker_news_api(self) -> Dict:
+        """Check Hacker News API availability"""
         try:
-            # トップストーリーを1件だけ取得してテスト
-            story_ids = self.hn_api.get_top_stories(limit=1)
-            
-            if story_ids:
-                response_time = (time.time() - start_time) * 1000
-                return ComponentHealth(
-                    name=name,
-                    status="healthy",
-                    message="API接続正常",
-                    last_check=datetime.now(),
-                    response_time_ms=response_time
-                )
-            else:
-                return ComponentHealth(
-                    name=name,
-                    status="unhealthy",
-                    message="APIレスポンスが空",
-                    last_check=datetime.now()
-                )
-                
-        except Exception as e:
-            logger.error(f"Hacker News APIチェックエラー: {e}")
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message=f"エラー: {str(e)}",
-                last_check=datetime.now()
-            )
-    
-    def _check_devto_api(self) -> ComponentHealth:
-        """dev.to APIの接続チェック"""
-        name = "dev.to API"
-        start_time = time.time()
-        
-        try:
-            url = f"{self.fc_api.dev_to_base}/articles?page=1&per_page=1"
-            response = requests.get(url, timeout=10)
-            
-            response_time = (time.time() - start_time) * 1000
+            start_time = time.time()
+            response = self.session.get(f"{HACKER_NEWS_API_URL}/topstories.json", timeout=10)
+            response_time = time.time() - start_time
             
             if response.status_code == 200:
-                return ComponentHealth(
-                    name=name,
-                    status="healthy",
-                    message="API接続正常",
-                    last_check=datetime.now(),
-                    response_time_ms=response_time
-                )
+                data = response.json()
+                return {
+                    'service': 'Hacker News API',
+                    'status': 'healthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'stories_count': len(data) if isinstance(data, list) else 0,
+                    'message': 'API responding normally'
+                }
             else:
-                return ComponentHealth(
-                    name=name,
-                    status="degraded",
-                    message=f"HTTPステータス: {response.status_code}",
-                    last_check=datetime.now(),
-                    response_time_ms=response_time
-                )
+                return {
+                    'service': 'Hacker News API',
+                    'status': 'unhealthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'error': f'HTTP {response.status_code}',
+                    'message': 'API returned error status'
+                }
                 
-        except Exception as e:
-            logger.error(f"dev.to APIチェックエラー: {e}")
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message=f"エラー: {str(e)}",
-                last_check=datetime.now()
-            )
+        except requests.RequestException as e:
+            return {
+                'service': 'Hacker News API',
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'API connection failed'
+            }
     
-    def _check_medium_rss(self) -> ComponentHealth:
-        """Medium RSSフィードの接続チェック"""
-        name = "Medium RSS"
-        start_time = time.time()
-        
+    def check_dev_to_api(self) -> Dict:
+        """Check dev.to API availability"""
         try:
-            # AIタグのRSSフィードをチェック
-            url = f"{self.fc_api.medium_rss_base}artificial-intelligence"
-            response = requests.get(url, timeout=10)
-            
-            response_time = (time.time() - start_time) * 1000
+            start_time = time.time()
+            params = {'tag': 'ai', 'per_page': 1}
+            response = self.session.get(DEV_TO_API_URL, params=params, timeout=10)
+            response_time = time.time() - start_time
             
             if response.status_code == 200:
-                return ComponentHealth(
-                    name=name,
-                    status="healthy",
-                    message="RSSフィード正常",
-                    last_check=datetime.now(),
-                    response_time_ms=response_time
-                )
+                data = response.json()
+                return {
+                    'service': 'dev.to API',
+                    'status': 'healthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'articles_available': len(data) if isinstance(data, list) else 0,
+                    'message': 'API responding normally'
+                }
             else:
-                return ComponentHealth(
-                    name=name,
-                    status="degraded",
-                    message=f"HTTPステータス: {response.status_code}",
-                    last_check=datetime.now(),
-                    response_time_ms=response_time
-                )
+                return {
+                    'service': 'dev.to API',
+                    'status': 'unhealthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'error': f'HTTP {response.status_code}',
+                    'message': 'API returned error status'
+                }
                 
-        except Exception as e:
-            logger.error(f"Medium RSSチェックエラー: {e}")
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message=f"エラー: {str(e)}",
-                last_check=datetime.now()
-            )
+        except requests.RequestException as e:
+            return {
+                'service': 'dev.to API',
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'API connection failed'
+            }
     
-    def _check_slack_webhook(self) -> ComponentHealth:
-        """Slack Webhookの検証（実際には送信しない）"""
-        name = "Slack Webhook"
-        
-        if not Config.SLACK_WEBHOOK_URL:
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message="Webhook URLが設定されていません",
-                last_check=datetime.now()
-            )
-        
-        # URL形式の基本的な検証
-        if Config.SLACK_WEBHOOK_URL.startswith("https://hooks.slack.com/services/"):
-            return ComponentHealth(
-                name=name,
-                status="healthy",
-                message="Webhook URL形式正常",
-                last_check=datetime.now()
-            )
-        else:
-            return ComponentHealth(
-                name=name,
-                status="degraded",
-                message="Webhook URL形式が異常",
-                last_check=datetime.now()
-            )
-    
-    def _check_file_system(self) -> ComponentHealth:
-        """ファイルシステムの書き込み権限チェック"""
-        name = "File System"
-        
+    def check_medium_rss(self) -> Dict:
+        """Check Medium RSS feed availability"""
         try:
-            # reportsディレクトリの存在と書き込み権限をチェック
-            os.makedirs('reports', exist_ok=True)
-            test_file = 'reports/.health_check_test'
+            start_time = time.time()
+            rss_url = "https://medium.com/feed/tag/ai"
+            response = self.session.get(rss_url, timeout=10)
+            response_time = time.time() - start_time
             
-            with open(test_file, 'w') as f:
-                f.write('test')
-            
-            os.remove(test_file)
-            
-            return ComponentHealth(
-                name=name,
-                status="healthy",
-                message="ファイルシステム書き込み可能",
-                last_check=datetime.now()
-            )
-            
-        except Exception as e:
-            logger.error(f"ファイルシステムチェックエラー: {e}")
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message=f"書き込みエラー: {str(e)}",
-                last_check=datetime.now()
-            )
+            if response.status_code == 200:
+                # Simple check if content looks like RSS
+                content_length = len(response.content)
+                is_xml = b'<?xml' in response.content[:100]
+                
+                return {
+                    'service': 'Medium RSS',
+                    'status': 'healthy' if is_xml else 'degraded',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'content_length': content_length,
+                    'message': 'RSS feed accessible' if is_xml else 'Response not XML format'
+                }
+            else:
+                return {
+                    'service': 'Medium RSS',
+                    'status': 'unhealthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'error': f'HTTP {response.status_code}',
+                    'message': 'RSS feed returned error status'
+                }
+                
+        except requests.RequestException as e:
+            return {
+                'service': 'Medium RSS',
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'RSS feed connection failed'
+            }
     
-    def _check_config(self) -> ComponentHealth:
-        """設定の妥当性チェック"""
-        name = "Configuration"
-        
+    def check_claude_cli(self) -> Dict:
+        """Check Claude CLI availability"""
         try:
-            Config.validate()
+            start_time = time.time()
+            result = subprocess.run(
+                ["claude", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            response_time = time.time() - start_time
             
-            # 追加の設定チェック
+            if result.returncode == 0:
+                version = result.stdout.strip()
+                return {
+                    'service': 'Claude CLI',
+                    'status': 'healthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'version': version,
+                    'message': 'Claude CLI available and configured'
+                }
+            else:
+                return {
+                    'service': 'Claude CLI',
+                    'status': 'unhealthy',
+                    'response_time_ms': round(response_time * 1000, 2),
+                    'error': result.stderr.strip() if result.stderr else 'Unknown error',
+                    'message': 'Claude CLI returned error'
+                }
+                
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            return {
+                'service': 'Claude CLI',
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'Claude CLI not available or not configured'
+            }
+    
+    def check_system_resources(self) -> Dict:
+        """Check basic system resource availability"""
+        try:
+            import psutil
+            
+            # Get CPU and memory usage
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # Determine status based on resource usage
+            status = 'healthy'
             warnings = []
             
-            if Config.ARTICLES_PER_DAY > 10:
-                warnings.append("記事数が多すぎる可能性があります")
+            if cpu_percent > 80:
+                status = 'degraded'
+                warnings.append(f'High CPU usage: {cpu_percent}%')
             
-            if Config.FACTCHECK_CONFIDENCE_THRESHOLD > 0.8:
-                warnings.append("信頼度閾値が高すぎる可能性があります")
+            if memory.percent > 85:
+                status = 'degraded'
+                warnings.append(f'High memory usage: {memory.percent}%')
             
-            if warnings:
-                return ComponentHealth(
-                    name=name,
-                    status="degraded",
-                    message=f"警告: {', '.join(warnings)}",
-                    last_check=datetime.now(),
-                    details={"warnings": warnings}
-                )
-            else:
-                return ComponentHealth(
-                    name=name,
-                    status="healthy",
-                    message="設定正常",
-                    last_check=datetime.now()
-                )
-                
-        except Exception as e:
-            return ComponentHealth(
-                name=name,
-                status="unhealthy",
-                message=f"設定エラー: {str(e)}",
-                last_check=datetime.now()
-            )
-    
-    def _save_health_status(self, health: SystemHealth):
-        """ヘルスステータスをファイルに保存"""
-        try:
-            data = {
-                'status': health.status,
-                'timestamp': health.timestamp.isoformat(),
-                'checks_passed': health.checks_passed,
-                'checks_total': health.checks_total,
-                'uptime_hours': health.uptime_hours,
-                'last_successful_run': health.last_successful_run.isoformat() if health.last_successful_run else None,
-                'components': [
-                    {
-                        'name': c.name,
-                        'status': c.status,
-                        'message': c.message,
-                        'last_check': c.last_check.isoformat(),
-                        'response_time_ms': c.response_time_ms,
-                        'details': c.details
-                    }
-                    for c in health.components
-                ]
+            if disk.percent > 90:
+                status = 'degraded'
+                warnings.append(f'High disk usage: {disk.percent}%')
+            
+            return {
+                'service': 'System Resources',
+                'status': status,
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory.percent,
+                'disk_percent': disk.percent,
+                'warnings': warnings,
+                'message': 'System resources within normal limits' if status == 'healthy' else 'Resource usage elevated'
             }
             
-            with open(self.HEALTH_FILE, 'w') as f:
-                json.dump(data, f, indent=2)
-                
+        except ImportError:
+            return {
+                'service': 'System Resources',
+                'status': 'unknown',
+                'error': 'psutil not available',
+                'message': 'Cannot check system resources (psutil not installed)'
+            }
         except Exception as e:
-            logger.error(f"ヘルスステータス保存エラー: {e}")
+            return {
+                'service': 'System Resources',
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'Failed to check system resources'
+            }
     
-    def _add_to_history(self, health: SystemHealth):
-        """ヘルスチェック履歴に追加"""
-        self.history.append({
-            'timestamp': health.timestamp.isoformat(),
-            'status': health.status,
-            'checks_passed': health.checks_passed,
-            'checks_total': health.checks_total
-        })
+    def run_full_health_check(self) -> Dict:
+        """Run comprehensive health check on all components"""
+        logger.info("Starting comprehensive health check...")
         
-        # 最新100件のみ保持
-        self.history = self.history[-100:]
+        start_time = time.time()
         
-        try:
-            with open(self.HISTORY_FILE, 'w') as f:
-                json.dump(self.history, f, indent=2)
-        except Exception as e:
-            logger.error(f"履歴保存エラー: {e}")
-    
-    def _load_history(self):
-        """履歴を読み込み"""
-        if os.path.exists(self.HISTORY_FILE):
-            try:
-                with open(self.HISTORY_FILE, 'r') as f:
-                    self.history = json.load(f)
-            except Exception as e:
-                logger.error(f"履歴読み込みエラー: {e}")
-                self.history = []
-    
-    def _get_last_successful_run(self) -> Optional[datetime]:
-        """最後の成功実行時刻を取得"""
-        # reportsディレクトリから最新のレポートを探す
-        try:
-            if os.path.exists('reports'):
-                files = [f for f in os.listdir('reports') if f.startswith('ai_news_')]
-                if files:
-                    # ファイル名から日時を抽出
-                    latest = sorted(files)[-1]
-                    date_str = latest.replace('ai_news_', '').replace('.json', '')
-                    return datetime.strptime(date_str, '%Y%m%d_%H%M%S')
-        except Exception as e:
-            logger.error(f"最終実行時刻取得エラー: {e}")
+        # Run all health checks
+        checks = [
+            self.check_hacker_news_api(),
+            self.check_dev_to_api(),
+            self.check_medium_rss(),
+            self.check_claude_cli(),
+            self.check_system_resources()
+        ]
         
-        return None
-    
-    def get_status_summary(self) -> str:
-        """ステータスサマリーを取得"""
-        if os.path.exists(self.HEALTH_FILE):
-            try:
-                with open(self.HEALTH_FILE, 'r') as f:
-                    data = json.load(f)
-                
-                status = data['status']
-                checks = f"{data['checks_passed']}/{data['checks_total']}"
-                timestamp = datetime.fromisoformat(data['timestamp'])
-                
-                # ステータス絵文字
-                emoji = {
-                    'healthy': '🟢',
-                    'degraded': '🟡',
-                    'unhealthy': '🔴'
-                }.get(status, '⚪')
-                
-                summary = f"{emoji} システムステータス: {status.upper()}\n"
-                summary += f"チェック結果: {checks}\n"
-                summary += f"最終チェック: {timestamp.strftime('%Y/%m/%d %H:%M')}\n"
-                
-                # 問題のあるコンポーネントをリスト
-                issues = []
-                for component in data['components']:
-                    if component['status'] != 'healthy':
-                        issues.append(f"- {component['name']}: {component['message']}")
-                
-                if issues:
-                    summary += "\n⚠️ 問題のあるコンポーネント:\n"
-                    summary += "\n".join(issues)
-                
-                return summary
-                
-            except Exception as e:
-                logger.error(f"ステータスサマリー取得エラー: {e}")
-                return "ヘルスステータス取得エラー"
+        total_time = time.time() - start_time
+        
+        # Calculate overall status
+        healthy_count = sum(1 for check in checks if check['status'] == 'healthy')
+        degraded_count = sum(1 for check in checks if check['status'] == 'degraded')
+        unhealthy_count = sum(1 for check in checks if check['status'] == 'unhealthy')
+        
+        if unhealthy_count > 0:
+            overall_status = 'unhealthy'
+        elif degraded_count > 0:
+            overall_status = 'degraded'
         else:
-            return "ヘルスチェック未実行"
+            overall_status = 'healthy'
+        
+        result = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S JST'),
+            'overall_status': overall_status,
+            'total_check_time_ms': round(total_time * 1000, 2),
+            'summary': {
+                'healthy': healthy_count,
+                'degraded': degraded_count,
+                'unhealthy': unhealthy_count,
+                'total': len(checks)
+            },
+            'checks': checks
+        }
+        
+        logger.info(f"Health check completed: {overall_status} ({healthy_count}/{len(checks)} healthy)")
+        return result
+    
+    def get_health_status_emoji(self, status: str) -> str:
+        """Get emoji representation of health status"""
+        status_emojis = {
+            'healthy': '✅',
+            'degraded': '⚠️',
+            'unhealthy': '❌',
+            'unknown': '❓'
+        }
+        return status_emojis.get(status, '❓')
+    
+    def format_health_report(self, health_data: Dict) -> str:
+        """Format health check results into readable report"""
+        overall_emoji = self.get_health_status_emoji(health_data['overall_status'])
+        
+        report = f"""🏥 **AI News Feeder - System Health Report**
+{overall_emoji} **Overall Status**: {health_data['overall_status'].upper()}
+⏱️ **Check Duration**: {health_data['total_check_time_ms']}ms
+📊 **Summary**: {health_data['summary']['healthy']}/{health_data['summary']['total']} services healthy
+
+**Component Status:**"""
+        
+        for check in health_data['checks']:
+            emoji = self.get_health_status_emoji(check['status'])
+            service_name = check['service']
+            status = check['status'].upper()
+            message = check.get('message', 'No details available')
+            
+            report += f"\n{emoji} **{service_name}**: {status}"
+            
+            # Add specific details for each service
+            if check['service'] == 'Hacker News API' and 'stories_count' in check:
+                report += f" ({check['stories_count']} stories available)"
+            elif check['service'] == 'dev.to API' and 'articles_available' in check:
+                report += f" ({check['articles_available']} articles available)"
+            elif check['service'] == 'Claude CLI' and 'version' in check:
+                report += f" ({check['version']})"
+            elif check['service'] == 'System Resources' and 'cpu_percent' in check:
+                report += f" (CPU: {check['cpu_percent']}%, Memory: {check['memory_percent']}%)"
+            
+            if 'response_time_ms' in check:
+                report += f" - {check['response_time_ms']}ms"
+            
+            if check['status'] != 'healthy' and 'error' in check:
+                report += f"\n   ⚠️ Error: {check['error']}"
+        
+        report += f"\n\n📅 **Checked at**: {health_data['timestamp']}"
+        
+        return report

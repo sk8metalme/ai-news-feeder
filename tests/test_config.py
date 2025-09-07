@@ -1,74 +1,86 @@
-"""config.pyのテスト"""
+"""
+Tests for configuration settings
+"""
 import pytest
-from src.utils.config import Config
+import os
+from unittest.mock import patch
+
+# Test configuration module
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from config import settings
 
 
-class TestConfig:
-    """Configクラスのテスト"""
+class TestConfiguration:
+    """Test cases for configuration settings"""
     
-    def test_config_loads_from_env(self):
-        """環境変数から設定が正しく読み込まれることを確認"""
-        assert Config.SLACK_WEBHOOK_URL == "https://hooks.slack.com/services/TEST/WEBHOOK/URL"
-        assert Config.ARTICLES_PER_DAY == 5
-        assert Config.MINIMUM_SCORE == 50
-        assert Config.RUN_HOUR == 9
+    def test_hacker_news_api_url(self):
+        """Test Hacker News API URL configuration"""
+        assert settings.HACKER_NEWS_API_URL == "https://hacker-news.firebaseio.com/v0"
     
-    def test_ai_keywords_exist(self):
-        """AIキーワードが定義されていることを確認"""
-        assert len(Config.AI_KEYWORDS) > 0
-        assert "ChatGPT" in Config.AI_KEYWORDS
-        assert "Claude" in Config.AI_KEYWORDS
-        assert "AI" in Config.AI_KEYWORDS
-        assert "LLM" in Config.AI_KEYWORDS
-        assert "OpenAI" in Config.AI_KEYWORDS
+    def test_score_threshold(self):
+        """Test score threshold configuration"""
+        assert settings.SCORE_THRESHOLD == 50
+        assert isinstance(settings.SCORE_THRESHOLD, int)
     
-    def test_api_urls_defined(self):
-        """API URLが定義されていることを確認"""
-        assert Config.HACKERNEWS_API_BASE == "https://hacker-news.firebaseio.com/v0"
-        assert Config.DEV_TO_API_BASE == "https://dev.to/api"
-        assert Config.MEDIUM_RSS_BASE == "https://medium.com/feed/tag/"
+    def test_ai_keywords(self):
+        """Test AI keywords configuration"""
+        assert isinstance(settings.AI_KEYWORDS, list)
+        assert len(settings.AI_KEYWORDS) > 0
+        
+        # Check that expected keywords are present
+        expected_keywords = ["ChatGPT", "Claude", "AI", "LLM", "OpenAI", "Google AI"]
+        for keyword in expected_keywords:
+            assert keyword in settings.AI_KEYWORDS
     
-    def test_validate_success(self):
-        """正常な設定での検証が成功することを確認"""
-        assert Config.validate() is True
+    def test_dev_to_api_url(self):
+        """Test dev.to API URL configuration"""
+        assert settings.DEV_TO_API_URL == "https://dev.to/api/articles"
     
-    def test_validate_missing_webhook(self, monkeypatch):
-        """Webhook URLが未設定の場合にエラーが発生することを確認"""
-        monkeypatch.setenv("SLACK_WEBHOOK_URL", "")
-        # Configクラスを再読み込み
+    def test_medium_rss_url(self):
+        """Test Medium RSS URL template"""
+        assert "{tag}" in settings.MEDIUM_RSS_URL
+        assert "medium.com" in settings.MEDIUM_RSS_URL
+    
+    def test_max_articles_per_day(self):
+        """Test maximum articles per day setting"""
+        assert settings.MAX_ARTICLES_PER_DAY == 5
+        assert isinstance(settings.MAX_ARTICLES_PER_DAY, int)
+    
+    def test_check_interval_hours(self):
+        """Test check interval configuration"""
+        assert settings.CHECK_INTERVAL_HOURS == 24
+        assert isinstance(settings.CHECK_INTERVAL_HOURS, int)
+    
+    @patch.dict(os.environ, {'SLACK_WEBHOOK_URL': 'https://hooks.slack.com/test'})
+    def test_slack_webhook_url_from_env(self):
+        """Test Slack webhook URL from environment variable"""
+        # Reload the module to pick up the environment variable
         import importlib
-        import src.utils.config
-        importlib.reload(src.utils.config)
-        from src.utils.config import Config as ReloadedConfig
+        importlib.reload(settings)
         
-        with pytest.raises(ValueError, match="SLACK_WEBHOOK_URLが設定されていません"):
-            ReloadedConfig.validate()
+        assert settings.SLACK_WEBHOOK_URL == 'https://hooks.slack.com/test'
     
-    def test_validate_invalid_articles_per_day(self, monkeypatch):
-        """ARTICLES_PER_DAYが範囲外の場合にエラーが発生することを確認"""
-        monkeypatch.setenv("ARTICLES_PER_DAY", "25")
-        # Configクラスを再読み込み
+    @patch.dict(os.environ, {'SLACK_CHANNEL': '#test-channel'})
+    def test_slack_channel_from_env(self):
+        """Test Slack channel from environment variable"""
         import importlib
-        import src.utils.config
-        importlib.reload(src.utils.config)
-        from src.utils.config import Config as ReloadedConfig
+        importlib.reload(settings)
         
-        with pytest.raises(ValueError, match="ARTICLES_PER_DAYは1-20の範囲で設定してください"):
-            ReloadedConfig.validate()
+        assert settings.SLACK_CHANNEL == '#test-channel'
     
-    def test_default_values(self, monkeypatch):
-        """環境変数が未設定の場合のデフォルト値を確認"""
-        # 特定の環境変数を削除
-        monkeypatch.delenv("ARTICLES_PER_DAY", raising=False)
-        monkeypatch.delenv("MINIMUM_SCORE", raising=False)
-        monkeypatch.delenv("RUN_HOUR", raising=False)
-        
-        # Configクラスを再読み込み
-        import importlib
-        import src.utils.config
-        importlib.reload(src.utils.config)
-        from src.utils.config import Config as ReloadedConfig
-        
-        assert ReloadedConfig.ARTICLES_PER_DAY == 5
-        assert ReloadedConfig.MINIMUM_SCORE == 50
-        assert ReloadedConfig.RUN_HOUR == 9
+    def test_slack_channel_current(self):
+        """Test current Slack channel configuration"""
+        # Test that SLACK_CHANNEL is properly configured
+        assert hasattr(settings, 'SLACK_CHANNEL')
+        assert isinstance(settings.SLACK_CHANNEL, str)
+        assert settings.SLACK_CHANNEL.startswith('#')
+    
+    def test_log_dir(self):
+        """Test log directory configuration"""
+        assert settings.LOG_DIR == "logs"
+    
+    def test_data_dir(self):
+        """Test data directory configuration"""
+        assert settings.DATA_DIR == "data"

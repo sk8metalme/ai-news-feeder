@@ -1,106 +1,75 @@
-"""テスト共通設定とフィクスチャ"""
-import pytest
-import os
+"""
+pytest configuration and fixtures
+"""
 import sys
-from unittest.mock import Mock, patch
+import os
+import pytest
+from unittest.mock import Mock
 
-# プロジェクトルートをPythonパスに追加
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add src directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# 環境変数のモック
-TEST_ENV = {
-    'SLACK_WEBHOOK_URL': 'https://hooks.slack.com/services/TEST/WEBHOOK/URL',
-    'ARTICLES_PER_DAY': '5',
-    'MINIMUM_SCORE': '50',
-    'RUN_HOUR': '9'
-}
-
-@pytest.fixture(autouse=True)
-def mock_env(monkeypatch):
-    """テスト用環境変数を設定"""
-    for key, value in TEST_ENV.items():
-        monkeypatch.setenv(key, value)
 
 @pytest.fixture
-def mock_hackernews_response():
-    """Hacker News APIレスポンスのモック"""
+def sample_hn_story():
+    """Sample Hacker News story data"""
     return {
-        'story_ids': [1001, 1002, 1003, 1004, 1005],
-        'stories': [
-            {
-                'id': 1001,
-                'title': 'ChatGPT-4 Achieves New Benchmark in Reasoning',
-                'url': 'https://example.com/chatgpt-benchmark',
-                'score': 256,
-                'time': 1693900000,
-                'type': 'story'
-            },
-            {
-                'id': 1002,
-                'title': 'Claude 3.5 Sonnet Released with Improved Capabilities',
-                'url': 'https://example.com/claude-release',
-                'score': 189,
-                'time': 1693890000,
-                'type': 'story'
-            },
-            {
-                'id': 1003,
-                'title': 'OpenAI Announces New Safety Research',
-                'url': 'https://example.com/openai-safety',
-                'score': 134,
-                'time': 1693880000,
-                'type': 'story'
-            },
-            {
-                'id': 1004,
-                'title': 'Deep Learning Framework Comparison 2025',
-                'url': 'https://example.com/dl-comparison',
-                'score': 98,
-                'time': 1693870000,
-                'type': 'story'
-            },
-            {
-                'id': 1005,
-                'title': 'Understanding LLM Hallucinations',
-                'url': 'https://example.com/llm-hallucinations',
-                'score': 87,
-                'time': 1693860000,
-                'type': 'story'
-            }
-        ]
+        "id": 12345,
+        "title": "New AI Model Breakthrough: ChatGPT-5 Released",
+        "url": "https://example.com/chatgpt5-released",
+        "score": 150,
+        "time": 1640995200,  # 2022-01-01 00:00:00
+        "by": "user123",
+        "descendants": 50,
+        "type": "story"
     }
 
-@pytest.fixture
-def mock_factcheck_response():
-    """ファクトチェックAPIレスポンスのモック"""
-    return {
-        'dev_to': [
-            {
-                'title': 'ChatGPT-4 Performance Analysis',
-                'url': 'https://dev.to/user/chatgpt-analysis',
-                'source': 'dev.to'
-            },
-            {
-                'title': 'Benchmarking AI Models',
-                'url': 'https://dev.to/user/ai-benchmarks',
-                'source': 'dev.to'
-            }
-        ],
-        'medium': [
-            {
-                'title': 'The Latest in ChatGPT Development',
-                'url': 'https://medium.com/@user/chatgpt-dev',
-                'source': 'Medium'
-            }
-        ]
-    }
 
 @pytest.fixture
-def mock_slack_webhook():
-    """Slack Webhookのモック"""
-    with patch('requests.post') as mock_post:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = 'ok'
-        mock_post.return_value = mock_response
-        yield mock_post
+def sample_verification_result():
+    """Sample verification result data"""
+    return {
+        "article_title": "New AI Model Breakthrough: ChatGPT-5 Released",
+        "article_url": "https://example.com/chatgpt5-released",
+        "verification_status": "verified",
+        "related_articles": {
+            "dev_to": [
+                {
+                    "title": "ChatGPT-5: What We Know So Far",
+                    "url": "https://dev.to/article1",
+                    "source": "dev.to",
+                    "published_at": "2022-01-01T00:00:00Z"
+                }
+            ],
+            "medium": [
+                {
+                    "title": "OpenAI Releases ChatGPT-5",
+                    "url": "https://medium.com/article1",
+                    "source": "medium",
+                    "published_at": "2022-01-01T00:00:00Z"
+                }
+            ]
+        },
+        "total_related_count": 2,
+        "checked_at": "2022-01-01 12:00:00 JST"
+    }
+
+
+@pytest.fixture
+def mock_requests(mocker):
+    """Mock requests module"""
+    return mocker.patch('requests.get')
+
+
+@pytest.fixture
+def mock_slack_webhook(mocker):
+    """Mock Slack webhook requests"""
+    return mocker.patch('requests.post')
+
+
+@pytest.fixture
+def temp_data_dir(tmp_path):
+    """Temporary directory for test data"""
+    data_dir = tmp_path / "test_data"
+    data_dir.mkdir()
+    return str(data_dir)

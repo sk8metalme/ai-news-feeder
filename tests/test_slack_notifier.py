@@ -1,202 +1,229 @@
-"""slack_notifier.pyのテスト"""
+"""
+Tests for Slack notifier module
+"""
 import pytest
-from unittest.mock import Mock, patch
 import responses
-from datetime import datetime
-from src.utils.slack_notifier import SlackNotifier
+import json
+from unittest.mock import Mock, patch
+
+from src.notification.slack_notifier import SlackNotifier
 
 
 class TestSlackNotifier:
-    """SlackNotifierクラスのテスト"""
+    """Test cases for SlackNotifier class"""
     
-    @pytest.fixture
-    def notifier(self):
-        """SlackNotifierインスタンスを返す"""
-        return SlackNotifier()
+    def setup_method(self):
+        """Setup test instance"""
+        self.webhook_url = "https://hooks.slack.com/services/TEST/WEBHOOK/URL"
+        self.notifier = SlackNotifier(webhook_url=self.webhook_url)
     
-    @pytest.fixture
-    def sample_articles(self):
-        """テスト用の記事データ"""
-        return [
-            {
-                'title': 'ChatGPT-4 Achieves New Benchmark',
-                'url': 'https://example.com/chatgpt',
-                'score': 256,
-                'time': 1693900000,
-                'verification': {
-                    'verified': True,
-                    'related_count': 3,
-                    'dev_to_count': 2,
-                    'medium_count': 1,
-                    'confidence_score': 0.85,
-                    'sources': {
-                        'dev_to': [
-                            {'title': 'Related 1', 'url': 'https://dev.to/1'},
-                            {'title': 'Related 2', 'url': 'https://dev.to/2'}
-                        ],
-                        'medium': [
-                            {'title': 'Related 3', 'url': 'https://medium.com/1'}
-                        ]
-                    }
-                }
-            },
-            {
-                'title': 'Claude 3.5 Released',
-                'url': 'https://example.com/claude',
-                'score': 189,
-                'time': 1693890000,
-                'verification': {
-                    'verified': False,
-                    'related_count': 0,
-                    'dev_to_count': 0,
-                    'medium_count': 0,
-                    'confidence_score': 0.0,
-                    'sources': {'dev_to': [], 'medium': []}
-                }
-            }
-        ]
+    def test_format_verification_report(self, sample_verification_result):
+        """Test formatting of verification report"""
+        result = self.notifier.format_verification_report(sample_verification_result)
+        
+        # Check that all expected elements are in the formatted message
+        assert "📊 AI News Verification Report" in result
+        assert "New AI Model Breakthrough: ChatGPT-5 Released" in result
+        assert "✅" in result  # Verified status emoji
+        assert "2 related articles found" in result
+        assert "dev.to(1), Medium(1)" in result
+        assert "https://example.com/chatgpt5-released" in result
+        assert "2022-01-01 12:00:00 JST" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
+    
+    def test_format_verification_report_unverified(self):
+        """Test formatting of unverified report"""
+        unverified_result = {
+            "article_title": "Unverified AI News",
+            "article_url": "https://example.com/unverified",
+            "verification_status": "unverified",
+            "total_related_count": 0,
+            "related_articles": {"dev_to": [], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST"
+        }
+        
+        result = self.notifier.format_verification_report(unverified_result)
+        
+        assert "📊 AI News Verification Report" in result
+        assert "❌" in result  # Unverified status emoji
+        assert "0 related articles found" in result
+        assert "dev.to(0), Medium(0)" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
+    
+    def test_format_verification_report_partially_verified(self):
+        """Test formatting of partially verified report"""
+        partially_verified_result = {
+            "article_title": "Partially Verified AI News",
+            "article_url": "https://example.com/partially-verified",
+            "verification_status": "partially_verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [{"title": "Related"}], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST"
+        }
+        
+        result = self.notifier.format_verification_report(partially_verified_result)
+        
+        assert "📊 AI News Verification Report" in result
+        assert "🟡" in result  # Partially verified status emoji
+        assert "1 related articles found" in result
+        assert "dev.to(1), Medium(0)" in result
+        assert "Claude CLI未設定のため無効" in result  # Default summarization status
     
     @responses.activate
-    def test_send_verification_report_success(self, notifier, sample_articles):
-        """検証レポートの送信が成功することを確認"""
+    def test_send_notification_success(self):
+        """Test successful notification sending"""
         responses.add(
             responses.POST,
-            notifier.webhook_url,
+            self.webhook_url,
             status=200
         )
         
-        result = notifier.send_verification_report(sample_articles)
+        result = self.notifier.send_notification("Test message")
         
         assert result is True
         assert len(responses.calls) == 1
         
-        # 送信されたペイロードを確認
-        request_body = responses.calls[0].request.body
-        assert b'AI News Verification Report' in request_body
-        assert b'ChatGPT-4 Achieves New Benchmark' in request_body
-        assert b'Claude 3.5 Released' in request_body
+        # Check request payload
+        request_body = json.loads(responses.calls[0].request.body)
+        assert request_body["text"] == "Test message"
+        assert request_body["username"] == "AI News Bot"
+        assert request_body["icon_emoji"] == ":robot_face:"
     
     @responses.activate
-    def test_send_verification_report_failure(self, notifier, sample_articles):
-        """検証レポート送信失敗時の処理を確認"""
+    def test_send_notification_with_custom_channel(self):
+        """Test notification with custom channel"""
         responses.add(
             responses.POST,
-            notifier.webhook_url,
-            status=400
-        )
-        
-        result = notifier.send_verification_report(sample_articles)
-        assert result is False
-    
-    @responses.activate
-    def test_send_verification_report_exception(self, notifier, sample_articles):
-        """検証レポート送信時の例外処理を確認"""
-        # responses.addを追加せずに呼び出すことで例外を発生させる
-        result = notifier.send_verification_report(sample_articles)
-        assert result is False
-    
-    def test_create_article_blocks_verified(self, notifier):
-        """検証済み記事のブロック作成を確認"""
-        article = {
-            'title': 'Test Article',
-            'url': 'https://example.com/test',
-            'score': 100,
-            'verification': {
-                'verified': True,
-                'related_count': 2,
-                'dev_to_count': 1,
-                'medium_count': 1,
-                'confidence_score': 0.75
-            }
-        }
-        
-        blocks = notifier._create_article_blocks(article)
-        
-        # ブロックの構造を確認
-        assert len(blocks) > 0
-        assert any('Test Article' in str(block) for block in blocks)
-        assert any('✅ Verified' in str(block) for block in blocks)
-        assert any('Score: 100' in str(block) for block in blocks)
-        assert any('Confidence' in str(block) for block in blocks)
-    
-    def test_create_article_blocks_not_verified(self, notifier):
-        """未検証記事のブロック作成を確認"""
-        article = {
-            'title': 'Unverified Article',
-            'url': 'https://example.com/unverified',
-            'score': 50,
-            'verification': {
-                'verified': False,
-                'related_count': 0,
-                'dev_to_count': 0,
-                'medium_count': 0,
-                'confidence_score': 0.0
-            }
-        }
-        
-        blocks = notifier._create_article_blocks(article)
-        
-        assert any('❌ Not Verified' in str(block) for block in blocks)
-        assert any('0 related articles found' in str(block) for block in blocks)
-    
-    @responses.activate
-    def test_send_error_notification_success(self, notifier):
-        """エラー通知の送信が成功することを確認"""
-        responses.add(
-            responses.POST,
-            notifier.webhook_url,
+            self.webhook_url,
             status=200
         )
         
-        result = notifier.send_error_notification("Test error message")
+        custom_channel = "#test-channel"
+        result = self.notifier.send_notification("Test message", channel=custom_channel)
         
         assert result is True
-        assert len(responses.calls) == 1
-        
-        request_body = responses.calls[0].request.body
-        assert b'AI News Feeder Error' in request_body
-        assert b'Test error message' in request_body
+        request_body = json.loads(responses.calls[0].request.body)
+        assert request_body["channel"] == custom_channel
     
     @responses.activate
-    def test_send_error_notification_failure(self, notifier):
-        """エラー通知送信失敗時の処理を確認"""
+    def test_send_notification_failure(self):
+        """Test notification sending failure"""
         responses.add(
             responses.POST,
-            notifier.webhook_url,
+            self.webhook_url,
             status=500
         )
         
-        result = notifier.send_error_notification("Test error")
+        result = self.notifier.send_notification("Test message")
         assert result is False
     
-    def test_webhook_url_from_config(self, notifier):
-        """Webhook URLが設定から取得されることを確認"""
-        assert notifier.webhook_url == "https://hooks.slack.com/services/TEST/WEBHOOK/URL"
+    def test_send_notification_no_webhook_url(self):
+        """Test notification without webhook URL"""
+        notifier = SlackNotifier(webhook_url="")  # Empty webhook URL
+        result = notifier.send_notification("Test message")
+        assert result is False
     
-    @patch('src.utils.slack_notifier.datetime')
-    def test_timestamp_formatting(self, mock_datetime, notifier):
-        """タイムスタンプのフォーマットを確認"""
-        mock_now = Mock()
-        mock_now.strftime.return_value = "2025/01/01 12:00"
-        mock_datetime.now.return_value = mock_now
+    @responses.activate
+    def test_send_verification_report(self, sample_verification_result):
+        """Test sending verification report"""
+        responses.add(
+            responses.POST,
+            self.webhook_url,
+            status=200
+        )
         
-        article = {
-            'title': 'Test',
-            'url': 'https://example.com',
-            'score': 100,
-            'verification': {'verified': True, 'related_count': 1, 'dev_to_count': 1, 'medium_count': 0}
+        result = self.notifier.send_verification_report(sample_verification_result)
+        
+        assert result is True
+        assert len(responses.calls) == 1
+        
+        # Check that the formatted message is sent
+        request_body = json.loads(responses.calls[0].request.body)
+        message = request_body["text"]
+        assert "📊 AI News Verification Report" in message
+        assert sample_verification_result["article_title"] in message
+    
+    @responses.activate
+    def test_send_daily_summary_with_articles(self, sample_verification_result):
+        """Test sending daily summary with verified articles"""
+        verification_results = [
+            sample_verification_result,
+            {
+                **sample_verification_result,
+                "article_title": "Another AI Article",
+                "verification_status": "unverified",
+                "total_related_count": 0
+            }
+        ]
+        
+        responses.add(
+            responses.POST,
+            self.webhook_url,
+            status=200
+        )
+        
+        result = self.notifier.send_daily_summary(verification_results)
+        
+        assert result is True
+        request_body = json.loads(responses.calls[0].request.body)
+        message = request_body["text"]
+        
+        assert "📊 Daily AI News Summary" in message
+        assert "**Total Articles Processed**: 2" in message
+        assert "**Verified Articles**: 1" in message
+        assert "**Unverified Articles**: 1" in message
+        assert "New AI Model Breakthrough: ChatGPT-5 Released" in message
+    
+    @responses.activate
+    def test_send_daily_summary_no_articles(self):
+        """Test sending daily summary with no articles"""
+        responses.add(
+            responses.POST,
+            self.webhook_url,
+            status=200
+        )
+        
+        result = self.notifier.send_daily_summary([])
+        
+        assert result is True
+        request_body = json.loads(responses.calls[0].request.body)
+        message = request_body["text"]
+        
+        assert "📊 Daily AI News Summary" in message
+        assert "❌ No verified AI articles found today" in message
+    
+    def test_format_verification_report_with_summary(self):
+        """Test formatting of verification report with summary"""
+        verification_result_with_summary = {
+            "article_title": "AI Article with Summary",
+            "article_url": "https://example.com/ai-article",
+            "verification_status": "verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [{"title": "Related"}], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST",
+            "summary": "これはAI技術に関する重要な記事です。新しい機械学習手法について説明しています。",
+            "summary_status": "success"
         }
         
-        blocks = notifier._create_article_blocks(article)
+        result = self.notifier.format_verification_report(verification_result_with_summary)
         
-        # 日時フォーマットが含まれていることを確認
-        assert any('2025/01/01 12:00' in str(block) for block in blocks)
+        assert "📝 **要約**:" in result
+        assert "これはAI技術に関する重要な記事です。" in result
     
-    def test_get_confidence_level(self, notifier):
-        """信頼度レベル判定のテスト"""
-        assert notifier._get_confidence_level(0.9) == "🟢 High"
-        assert notifier._get_confidence_level(0.8) == "🟢 High"
-        assert notifier._get_confidence_level(0.7) == "🟡 Medium"
-        assert notifier._get_confidence_level(0.5) == "🟡 Medium"
-        assert notifier._get_confidence_level(0.4) == "🔴 Low"
-        assert notifier._get_confidence_level(0.0) == "🔴 Low"
+    def test_format_verification_report_summary_failed(self):
+        """Test formatting of verification report with failed summary"""
+        verification_result_failed = {
+            "article_title": "AI Article",
+            "article_url": "https://example.com/ai-article",
+            "verification_status": "verified",
+            "total_related_count": 1,
+            "related_articles": {"dev_to": [], "medium": []},
+            "checked_at": "2022-01-01 12:00:00 JST",
+            "summary": None,
+            "summary_status": "failed",
+            "summary_error": "Claude CLI timeout"
+        }
+        
+        result = self.notifier.format_verification_report(verification_result_failed)
+        
+        assert "📝 **要約**: 生成失敗 (Claude CLI timeout)" in result

@@ -4,34 +4,64 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environment variables
+.env
+.venv
+env/
 venv/
 ENV/
-env/
-.venv
-
-# 環境設定
-.env
-*.env
-
-# ログ・レポート
-*.log
-logs/
-reports/
-cron.log
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Data files
+data/
+*.json
+
+# macOS
 .DS_Store
 
-# テスト
-.pytest_cache/
-.coverage
+# Test coverage
 htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
 
-# その他
-*.bak
-*.tmp
-mycron
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
