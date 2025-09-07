@@ -152,6 +152,39 @@ ai-news-feeder/
 tail -f ai_news_feeder.log
 ```
 
+## 🏥 運用監視機能
+
+### ヘルスチェック
+システムの健康状態を監視：
+```bash
+# 単発チェック
+python scripts/health_monitor.py --check
+
+# 継続監視（30分間隔）
+python scripts/health_monitor.py --monitor --interval 30
+
+# ヘルスチェック履歴
+python scripts/health_monitor.py --history
+```
+
+### 異常検知・アラート
+自動的に以下を検知してSlack通知：
+- 連続実行失敗（3回以上）
+- 記事数不足
+- パフォーマンス劣化
+
+### 統計レポート
+```bash
+# 日次レポート
+python scripts/statistics_report.py --daily
+
+# 週次レポート
+python scripts/statistics_report.py --weekly
+
+# Slackダッシュボード送信
+python scripts/statistics_report.py --slack
+```
+
 ## 🚧 今後の機能拡張予定
 
 - [ ] Reddit API連携

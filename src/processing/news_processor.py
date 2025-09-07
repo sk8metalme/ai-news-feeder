@@ -7,6 +7,8 @@ from src.api.hackernews_api import HackerNewsAPI
 from src.api.factcheck_api import FactCheckAPI
 from src.utils.slack_notifier import SlackNotifier
 from src.utils.config import Config
+from src.utils.health_checker import HealthChecker
+from src.utils.anomaly_detector import AnomalyDetector, ExecutionResult
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +20,16 @@ class NewsProcessor:
         self.hn_api = HackerNewsAPI()
         self.factcheck_api = FactCheckAPI()
         self.slack_notifier = SlackNotifier()
+        self.health_checker = HealthChecker()
+        self.anomaly_detector = AnomalyDetector()
     
     def process_daily_news(self) -> bool:
         """日次のニュース処理を実行"""
+        start_time = datetime.now()
+        articles_found = 0
+        articles_verified = 0
+        error_message = None
+        
         try:
             logger.info("AI News Feeder - 日次処理を開始します")
             
@@ -30,9 +39,11 @@ class NewsProcessor:
             
             if not stories:
                 logger.warning("AI関連記事が見つかりませんでした")
+                error_message = "AI関連記事が見つかりませんでした"
                 return False
             
-            logger.info(f"{len(stories)}件のAI関連記事を発見しました")
+            articles_found = len(stories)
+            logger.info(f"{articles_found}件のAI関連記事を発見しました")
             
             # 2. 各記事の信憑性を検証
             verified_articles = []
@@ -61,8 +72,10 @@ class NewsProcessor:
                     break
             
             # 3. 検証済み記事をSlackに投稿
+            articles_verified = len(verified_articles)
+            
             if verified_articles:
-                logger.info(f"{len(verified_articles)}件の検証済み記事をSlackに送信中...")
+                logger.info(f"{articles_verified}件の検証済み記事をSlackに送信中...")
                 success = self.slack_notifier.send_verification_report(verified_articles)
                 
                 if success:
@@ -71,9 +84,11 @@ class NewsProcessor:
                     return True
                 else:
                     logger.error("Slackへの送信に失敗しました")
+                    error_message = "Slackへの送信に失敗しました"
                     return False
             else:
                 logger.warning("検証済み記事が0件でした")
+                error_message = "検証済み記事が0件でした"
                 self.slack_notifier.send_error_notification(
                     "本日は検証済みのAI関連記事が見つかりませんでした"
                 )
@@ -81,8 +96,24 @@ class NewsProcessor:
                 
         except Exception as e:
             logger.error(f"処理中にエラーが発生しました: {e}")
+            error_message = str(e)
             self.slack_notifier.send_error_notification(str(e))
             return False
+        
+        finally:
+            # 実行結果を記録
+            processing_time = (datetime.now() - start_time).total_seconds()
+            execution_result = ExecutionResult(
+                timestamp=start_time,
+                success=error_message is None,
+                articles_found=articles_found,
+                articles_verified=articles_verified,
+                processing_time_seconds=processing_time,
+                error_message=error_message
+            )
+            
+            self.anomaly_detector.record_execution(execution_result)
+            logger.info(f"処理時間: {processing_time:.1f}秒")
     
     def _save_report(self, articles: List[Dict]):
         """レポートをローカルに保存（オプション）"""

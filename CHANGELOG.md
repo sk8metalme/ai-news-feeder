@@ -5,6 +5,28 @@ All notable changes to AI News Feeder will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-09-06
+
+### Added
+- **ヘルスチェック機能**: システム稼働状況の監視（`scripts/health_monitor.py`）
+  - 各コンポーネントの健全性チェック
+  - API接続状況の監視
+  - ヘルスチェック履歴の記録
+- **異常検知・アラート機能**: 自動異常検知とSlack通知
+  - 連続実行失敗の検知（3回以上）
+  - 記事数不足の検知
+  - パフォーマンス劣化の検知
+  - ベースライン性能の自動計算
+- **実行統計の可視化**: 統計レポート生成（`scripts/statistics_report.py`）
+  - 日次・週次レポート
+  - パフォーマンス分析
+  - Slackダッシュボード機能
+  - トレンド分析
+
+### Changed
+- NewsProcessorに実行結果記録機能を追加
+- 処理時間の計測と記録
+
 ## [1.0.1] - 2025-09-06
 
 ### Added
