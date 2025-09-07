@@ -19,6 +19,12 @@ class Config:
     MINIMUM_SCORE = int(os.getenv("MINIMUM_SCORE", "50"))
     RUN_HOUR = int(os.getenv("RUN_HOUR", "9"))
     
+    # ファクトチェック設定
+    FACTCHECK_MIN_SOURCES = int(os.getenv("FACTCHECK_MIN_SOURCES", "1"))  # 最低限必要な関連記事数
+    FACTCHECK_MIN_DEV_TO = int(os.getenv("FACTCHECK_MIN_DEV_TO", "0"))  # dev.toの最低記事数
+    FACTCHECK_MIN_MEDIUM = int(os.getenv("FACTCHECK_MIN_MEDIUM", "0"))  # Mediumの最低記事数
+    FACTCHECK_CONFIDENCE_THRESHOLD = float(os.getenv("FACTCHECK_CONFIDENCE_THRESHOLD", "0.5"))  # 信頼度閾値
+    
     # AIキーワード
     AI_KEYWORDS = [
         "ChatGPT",

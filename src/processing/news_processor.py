@@ -43,7 +43,7 @@ class NewsProcessor:
                 # ファクトチェック実行
                 verification = self.factcheck_api.verify_story(story.get('title', ''))
                 
-                if verification['verified']:
+                if verification['verified'] and verification.get('confidence_score', 0) >= Config.FACTCHECK_CONFIDENCE_THRESHOLD:
                     article_data = {
                         'title': story.get('title'),
                         'url': story.get('url'),
@@ -52,9 +52,9 @@ class NewsProcessor:
                         'verification': verification
                     }
                     verified_articles.append(article_data)
-                    logger.info(f"✅ 検証済み: {story.get('title')}")
+                    logger.info(f"✅ 検証済み: {story.get('title')} (信頼度: {verification.get('confidence_score', 0):.2f})")
                 else:
-                    logger.info(f"❌ 検証失敗: {story.get('title')}")
+                    logger.info(f"❌ 検証失敗: {story.get('title')} (信頼度: {verification.get('confidence_score', 0):.2f})")
                 
                 # 必要な記事数に達したら終了
                 if len(verified_articles) >= Config.ARTICLES_PER_DAY:

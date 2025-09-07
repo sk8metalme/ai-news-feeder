@@ -106,12 +106,17 @@ class SlackNotifier:
         related_count = verification.get('related_count', 0)
         dev_to_count = verification.get('dev_to_count', 0)
         medium_count = verification.get('medium_count', 0)
+        confidence_score = verification.get('confidence_score', 0.0)
+        
+        # 信頼度レベルの表示
+        confidence_level = self._get_confidence_level(confidence_score)
         
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
                 "text": f"*{verified_text}:* {related_count} related articles found\n" +
+                        f"*Confidence:* {confidence_level} ({confidence_score:.2f})\n" +
                         f"*Links:* dev.to({dev_to_count}), Medium({medium_count})"
             }
         })
@@ -177,3 +182,12 @@ class SlackNotifier:
         except Exception as e:
             logger.error(f"エラー通知送信失敗: {e}")
             return False
+    
+    def _get_confidence_level(self, score: float) -> str:
+        """信頼度スコアからレベルを判定"""
+        if score >= 0.8:
+            return "🟢 High"
+        elif score >= 0.5:
+            return "🟡 Medium"
+        else:
+            return "🔴 Low"

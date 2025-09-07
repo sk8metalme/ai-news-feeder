@@ -92,17 +92,72 @@ class FactCheckAPI:
         medium_results = self.search_medium(story_title)
         
         total_related = len(dev_to_results) + len(medium_results)
+        dev_to_count = len(dev_to_results)
+        medium_count = len(medium_results)
+        
+        # 複数の検証基準を適用
+        verified = self._check_verification_criteria(
+            total_related, dev_to_count, medium_count
+        )
+        
+        # 信頼度スコアを計算
+        confidence_score = self._calculate_confidence_score(
+            total_related, dev_to_count, medium_count
+        )
         
         return {
-            'verified': total_related >= 1,  # 1件以上見つかれば信憑性ありと判定
+            'verified': verified,
             'related_count': total_related,
-            'dev_to_count': len(dev_to_results),
-            'medium_count': len(medium_results),
+            'dev_to_count': dev_to_count,
+            'medium_count': medium_count,
+            'confidence_score': confidence_score,
             'sources': {
                 'dev_to': dev_to_results,
                 'medium': medium_results
             }
         }
+    
+    def _check_verification_criteria(self, total: int, dev_to: int, medium: int) -> bool:
+        """検証基準をチェック"""
+        # 総数が最低限必要な数を満たしているか
+        if total < Config.FACTCHECK_MIN_SOURCES:
+            return False
+        
+        # 個別のソースの最低要件をチェック
+        if dev_to < Config.FACTCHECK_MIN_DEV_TO:
+            return False
+        
+        if medium < Config.FACTCHECK_MIN_MEDIUM:
+            return False
+        
+        return True
+    
+    def _calculate_confidence_score(self, total: int, dev_to: int, medium: int) -> float:
+        """信頼度スコアを計算（0.0-1.0）"""
+        if total == 0:
+            return 0.0
+        
+        # 基本スコア（記事数に基づく）
+        base_score = min(total / 10.0, 1.0)  # 10記事で最大スコア
+        
+        # ソースの多様性ボーナス
+        diversity_bonus = 0.0
+        if dev_to > 0 and medium > 0:
+            diversity_bonus = 0.2  # 両方のソースから記事がある場合
+        
+        # 記事数に応じた重み付け
+        dev_to_weight = 0.6  # dev.toの重み
+        medium_weight = 0.4  # Mediumの重み
+        
+        weighted_score = (
+            (dev_to * dev_to_weight + medium * medium_weight) / 
+            max(total * (dev_to_weight + medium_weight) / 2, 1)
+        )
+        
+        # 最終スコア
+        final_score = (base_score * 0.7 + weighted_score * 0.3 + diversity_bonus)
+        
+        return min(final_score, 1.0)
     
     def _extract_keywords(self, text: str) -> List[str]:
         """テキストから主要なキーワードを抽出"""

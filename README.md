@@ -63,6 +63,10 @@ python main.py
 | `ARTICLES_PER_DAY` | 1日に投稿する記事数 | 5 |
 | `MINIMUM_SCORE` | Hacker Newsの最低スコア | 50 |
 | `RUN_HOUR` | 実行時刻（24時間形式） | 9 |
+| `FACTCHECK_MIN_SOURCES` | 最低限必要な関連記事数 | 1 |
+| `FACTCHECK_MIN_DEV_TO` | dev.toの最低記事数 | 0 |
+| `FACTCHECK_MIN_MEDIUM` | Mediumの最低記事数 | 0 |
+| `FACTCHECK_CONFIDENCE_THRESHOLD` | 信頼度閾値（0.0-1.0） | 0.5 |
 
 ## 📊 投稿フォーマット
 
@@ -75,6 +79,7 @@ Date: 2025/09/05 09:00 JST
 Topic: ChatGPT-4o Achieves New Benchmark in Reasoning
 Source: Hacker News (Score: 256)
 ✅ Verified: 3 related articles found
+Confidence: 🟢 High (0.85)
 Links: dev.to(2), Medium(1)
 URL: View Article
 Checked: 2025/09/05 09:00 JST
@@ -87,7 +92,13 @@ Checked: 2025/09/05 09:00 JST
 2. **AIフィルタリング**: タイトルにAI関連キーワードが含まれる記事を抽出
 3. **スコアフィルタリング**: 設定されたスコア以上の記事のみを選択
 4. **信憑性検証**: dev.toとMediumで関連記事を検索
-5. **判定**: 1件以上の関連記事が見つかれば「検証済み」と判定
+5. **信頼度計算**: 記事数、ソースの多様性から0.0-1.0のスコアを算出
+6. **判定**: 設定された基準（記事数、信頼度閾値）を満たせば「検証済み」と判定
+
+### 📈 信頼度レベル
+- 🟢 **High** (0.8以上): 複数のソースから多数の関連記事
+- 🟡 **Medium** (0.5-0.8): 適度な数の関連記事
+- 🔴 **Low** (0.5未満): 関連記事が少ない
 
 ## 🛠️ 技術スタック
 
