@@ -41,3 +41,8 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(console_handler)
     
     return logger
+
+
+def setup_logger(name: str) -> logging.Logger:
+    """ロガーをセットアップして返す（get_loggerのエイリアス）"""
+    return get_logger(name)
