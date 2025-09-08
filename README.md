@@ -10,6 +10,7 @@ Hacker Newsで話題のAI関連ニュースの信憑性を検証し、信頼で�
 - **Slack自動投稿**: 検証済み記事と要約を構造化フォーマットで通知
 - **日次レポート**: JSON形式での詳細な分析レポートを生成
 - **自動スケジューリング**: cron または内蔵スケジューラーで定期実行
+- **Reddit/GitHub連携（オプション）**: r/MachineLearning 等と GitHub Trending からもAI関連情報を収集
 
 ## 🚀 クイックスタート
 
@@ -24,8 +25,8 @@ cd ai-news-feeder
 pip install -r requirements.txt
 
 # 環境変数を設定
-cp env.example .env
-# .envファイルを編集してSlack Webhook URLを設定
+cp .env.example .env
+# .envファイルを編集してSlack Webhook URLを設定（必要に応じて Reddit/GitHub 資格情報も設定）
 ```
 
 ### 2. Slack Webhook設定
@@ -54,6 +55,13 @@ SUMMARIZATION_TIMEOUT=60
 ```
 
 **注意**: Claude CLI未設定でも他の機能は正常に動作します。
+
+### 4. Reddit/GitHub（オプション）
+
+`.env` で以下を設定すると、Reddit / GitHub Trending からも記事を収集します。
+
+- Reddit: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `ENABLE_REDDIT=true`
+- GitHub: `GITHUB_ACCESS_TOKEN`, `ENABLE_GITHUB=true`
 
 ### 4. 実行方法
 
@@ -122,6 +130,13 @@ ai-news-feeder/
 
 ## ⚙️ 設定
 
+### 環境変数（主要）
+- Slack: `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`
+- 要約（任意）: `ENABLE_SUMMARIZATION`, `CLAUDE_CLI_PATH`, `SUMMARIZATION_TIMEOUT`
+- Reddit（任意）: `ENABLE_REDDIT`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+- GitHub（任意）: `ENABLE_GITHUB`, `GITHUB_ACCESS_TOKEN`
+- 収集件数: `MAX_ARTICLES_PER_SOURCE`（各ソースの上限。既定 5）
+
 ### キーワード設定
 `config/settings.py`でAI関連キーワードをカスタマイズ可能:
 
@@ -132,10 +147,11 @@ AI_KEYWORDS = [
 ]
 ```
 
-### 検証設定
-- **スコア閾値**: 50点以上のHacker News記事を対象
-- **記事数制限**: 1日最大5件の記事を投稿
-- **検証間隔**: 24時間ごとに実行
+### 検証/取得設定
+- **スコア閾値**: 50点以上のHacker News記事を対象（`config/settings.py`）
+- **記事数制限**: 1日最大5件の記事を投稿（`config/settings.py`）
+- **検証間隔**: 24時間ごとに実行（`config/settings.py`）
+- **ソース有効化/件数**: `.env` の `ENABLE_REDDIT` / `ENABLE_GITHUB` / `MAX_ARTICLES_PER_SOURCE`
 
 ## 📈 投稿フォーマット
 
@@ -237,7 +253,7 @@ logger.setLevel(logging.DEBUG)  # より詳細なログ
 
 ## 🛣️ 今後の開発予定
 
-- [ ] Reddit API、GitHub Trending対応
+- [x] Reddit API、GitHub Trending対応
 - [ ] 3段階信憑性評価（高/中/低）
 - [ ] Google Translate API連携での日本語対応
 - [ ] Web UI での手動検証機能

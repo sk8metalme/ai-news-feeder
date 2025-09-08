@@ -2,8 +2,8 @@
 
 **Feature ID**: 001-reddit-api-github  
 **作成日**: 2025-09-07  
-**最終更新**: 2025-09-07  
-**Phase**: 3 (機能拡張)
+**最終更新**: 2025-09-08  
+**Phase**: 3 (機能拡張) - 実装完了 / テスト緑
 
 ## 📋 概要
 
@@ -223,7 +223,7 @@ class GitHubTrendingAPI:
   - 運用マニュアル更新
   - v1.3.0リリース準備
 
-## 🔧 設定項目
+## 🔧 設定項目（更新）
 
 ### 環境変数
 ```env
@@ -238,7 +238,7 @@ GITHUB_ACCESS_TOKEN=your_github_personal_access_token
 # 統合設定
 ENABLE_REDDIT=true
 ENABLE_GITHUB=true
-MAX_ARTICLES_PER_SOURCE=5
+MAX_ARTICLES_PER_SOURCE=5  # .env で制御
 ```
 
 ### 設定ファイル (config/sources.py)

@@ -12,8 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.utils.health_checker import HealthChecker
 from src.utils.anomaly_detector import AnomalyDetector
-from src.utils.slack_notifier import SlackNotifier
-from src.utils.config import Config
+from src.notification.slack_notifier import SlackNotifier
 import logging
 
 logger = logging.getLogger(__name__)
@@ -424,26 +423,22 @@ class StatisticsReporter:
             }
         })
         
-        # 送信
-        message = {
-            "blocks": blocks,
-            "text": "AI News Feeder ダッシュボード"
-        }
-        
-        try:
-            response = self.slack_notifier.session.post(
-                self.slack_notifier.webhook_url,
-                json=message,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                print("Slackダッシュボード送信成功")
-            else:
-                print(f"Slack送信エラー: {response.status_code}")
-                
-        except Exception as e:
-            print(f"Slack送信エラー: {e}")
+        # テキストでサマリー送信（簡易版）
+        lines = [
+            "📊 AI News Feeder ダッシュボード",
+            f"更新時刻: {datetime.now().strftime('%Y/%m/%d %H:%M')}",
+        ]
+        if exec_stats and 'recent_24h' in exec_stats:
+            r = exec_stats['recent_24h']
+            lines.append(f"24h 実行: {r['total']}回 / 成功率 {r['success_rate']:.1f}%")
+        lines.append(f"ヘルス: {health_summary.split('\n')[0]}")
+        if recent_alerts:
+            lines.append(f"アラート: {len(recent_alerts)}件 (24h)")
+        else:
+            lines.append("アラート: なし")
+        text = "\n".join(lines)
+        ok = self.slack_notifier.send_notification(text)
+        print("Slackダッシュボード送信成功" if ok else "Slack送信エラー")
 
 
 def main():

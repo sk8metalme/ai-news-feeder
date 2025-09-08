@@ -34,7 +34,8 @@ class ArticleSummarizer:
             else:
                 logger.warning("Claude CLI not available or not configured")
                 return False
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except Exception as e:
+            # サンドボックス／権限による例外もここで握りつぶし、機能を無効化
             logger.warning(f"Claude CLI check failed: {e}")
             return False
     
@@ -46,6 +47,11 @@ class ArticleSummarizer:
             }
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
+            # 非テキスト（画像・バイナリ等）は要約対象外
+            content_type = response.headers.get('Content-Type', '').lower()
+            if not any(t in content_type for t in ['text/html', 'text/plain', 'application/xhtml']):
+                logger.warning(f"Non-text content detected (Content-Type: {content_type}), skipping: {url}")
+                return None
             
             # Parse HTML and extract text content
             soup = BeautifulSoup(response.content, 'html.parser')

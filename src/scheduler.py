@@ -10,7 +10,7 @@ from .verification.fact_checker import FactChecker
 from .notification.slack_notifier import SlackNotifier
 from .utils.report_generator import ReportGenerator
 from .utils.logger import get_logger
-from config.settings import CHECK_INTERVAL_HOURS, MAX_ARTICLES_PER_DAY, ENABLE_SUMMARIZATION
+from config.settings import CHECK_INTERVAL_HOURS, MAX_ARTICLES_PER_DAY, ENABLE_SUMMARIZATION, NOTIFY_VERIFICATION_LEVEL
 
 logger = get_logger(__name__)
 
@@ -61,8 +61,15 @@ class AINewsScheduler:
                 
                 verification_results.append(result)
                 
-                # Send individual notification for verified articles
-                if result.get('verification_status') == 'verified':
+                # Send individual notifications per policy
+                status = result.get('verification_status')
+                def _should_notify(st: str) -> bool:
+                    if NOTIFY_VERIFICATION_LEVEL == 'verified_only':
+                        return st == 'verified'
+                    if NOTIFY_VERIFICATION_LEVEL in ('verified_or_partial', 'verified_partial'):
+                        return st in ('verified', 'partially_verified')
+                    return True
+                if _should_notify(status):
                     self.slack_notifier.send_verification_report(result)
                 
                 # Add delay between verifications

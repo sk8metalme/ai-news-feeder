@@ -10,3 +10,4 @@ praw==7.7.1
 PyGithub==1.59.1
 feedparser==6.0.10
 aiohttp==3.9.1
+beautifulsoup4==4.12.3

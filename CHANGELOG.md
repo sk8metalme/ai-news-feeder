@@ -5,6 +5,19 @@ All notable changes to AI News Feeder will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-09-08
+
+### Changed
+- Code cleanup: unify GitHub/Reddit per-source dedup; remove global dedup
+- Orchestrator wired to `.env` toggles (`ENABLE_REDDIT`, `ENABLE_GITHUB`, `MAX_ARTICLES_PER_SOURCE`)
+- Claude CLI availability check hardened for sandboxed environments
+- README updated to match `.env.example` and new integrations
+
+### Deprecated
+- `src/api/hackernews_api.py` (use `src/api/hacker_news.py`)
+- `src/api/factcheck_api.py` (use `src/verification/fact_checker.py`)
+- `src/utils/slack_notifier.py` (use `src/notification/slack_notifier.py`)
+
 ## [1.1.0] - 2025-09-06
 
 ### Added
