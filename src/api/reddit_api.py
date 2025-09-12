@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from ..utils.logger import setup_logger
+from config import settings
 
 logger = setup_logger(__name__)
 
@@ -165,17 +166,19 @@ class RedditAPI:
         logger.info(f"Filtered {len(filtered_posts)} AI-related posts from {len(posts)} total posts")
         return filtered_posts
     
-    def filter_by_score(self, posts: List[RedditPost], min_score: int = 50) -> List[RedditPost]:
+    def filter_by_score(self, posts: List[RedditPost], min_score: int = None) -> List[RedditPost]:
         """
         スコア（アップvotes）でフィルタリング
         
         Args:
             posts: RedditPost オブジェクトのリスト
-            min_score: 最小スコア閾値
+            min_score: 最小スコア閾値（None時は設定値）
         
         Returns:
             指定スコア以上の投稿のみを含むリスト
         """
+        if min_score is None:
+            min_score = settings.REDDIT_SCORE_THRESHOLD
         filtered_posts = [post for post in posts if post.score >= min_score]
         logger.info(f"Filtered {len(filtered_posts)} posts with score >= {min_score}")
         return filtered_posts
@@ -201,10 +204,20 @@ class RedditAPI:
                 # AI関連でフィルタリング
                 ai_posts = self.filter_ai_related_posts(posts)
                 
-                # スコアでフィルタリング
-                score_filtered = self.filter_by_score(ai_posts, min_score=50)
+                # スコアでフィルタリング（.env設定のREDDIT_SCORE_THRESHOLDを使用）
+                score_filtered = self.filter_by_score(ai_posts)
+
+                # subreddit単位でURL重複除去
+                deduped = []
+                seen_urls = set()
+                for p in score_filtered:
+                    parsed_url = urlparse(p.url)
+                    normalized_url = f"{parsed_url.netloc}{parsed_url.path}"
+                    if normalized_url not in seen_urls:
+                        deduped.append(p)
+                        seen_urls.add(normalized_url)
                 
-                all_posts.extend(score_filtered)
+                all_posts.extend(deduped)
                 
                 logger.info(f"Collected {len(score_filtered)} posts from r/{subreddit_name}")
                 
@@ -215,24 +228,10 @@ class RedditAPI:
                 logger.error(f"Failed to fetch from r/{subreddit_name}: {e}")
                 continue
         
-        # スコア順でソート（降順）
+        # スコア順でソート（降順）。全体での重複除去は行わない（サブレディット単位で実施済み）
         all_posts.sort(key=lambda post: post.score, reverse=True)
-        
-        # 重複除去（同じURLの投稿を除去）
-        unique_posts = []
-        seen_urls = set()
-        
-        for post in all_posts:
-            # URLの正規化
-            parsed_url = urlparse(post.url)
-            normalized_url = f"{parsed_url.netloc}{parsed_url.path}"
-            
-            if normalized_url not in seen_urls:
-                unique_posts.append(post)
-                seen_urls.add(normalized_url)
-        
-        logger.info(f"Final result: {len(unique_posts)} unique AI-related posts from {len(subreddits)} subreddits")
-        return unique_posts[:max_posts_per_sub * len(subreddits)]  # 最大件数制限
+        logger.info(f"Final result: {len(all_posts)} AI-related posts from {len(subreddits)} subreddits")
+        return all_posts[:max_posts_per_sub * len(subreddits)]  # 最大件数制限
     
     def convert_to_article_format(self, reddit_post: RedditPost) -> Dict:
         """

@@ -1,9 +1,9 @@
-"""hackernews_api.pyのテスト"""
+"""hacker_news.py のテスト（新版）"""
 import pytest
 import time
 from unittest.mock import Mock, patch, MagicMock
 import responses
-from src.api.hackernews_api import HackerNewsAPI
+from src.api.hacker_news import HackerNewsAPI
 
 
 class TestHackerNewsAPI:
@@ -26,8 +26,8 @@ class TestHackerNewsAPI:
             status=200
         )
         
-        result = api.get_top_stories(limit=3)
-        assert result == [1001, 1002, 1003]
+        result = api.get_top_stories()
+        assert result[:3] == [1001, 1002, 1003]
     
     @responses.activate
     def test_get_top_stories_error(self, api):
@@ -59,7 +59,7 @@ class TestHackerNewsAPI:
             status=200
         )
         
-        result = api.get_story(1001)
+        result = api.get_story_details(1001)
         assert result == story_data
     
     @responses.activate
@@ -71,11 +71,11 @@ class TestHackerNewsAPI:
             status=404
         )
         
-        result = api.get_story(1001)
+        result = api.get_story_details(1001)
         assert result is None
     
-    @patch('src.api.hackernews_api.HackerNewsAPI.get_top_stories')
-    @patch('src.api.hackernews_api.HackerNewsAPI.get_story')
+    @patch('src.api.hacker_news.HackerNewsAPI.get_top_stories')
+    @patch('src.api.hacker_news.HackerNewsAPI.get_story_details')
     def test_search_ai_stories(self, mock_get_story, mock_get_top_stories, api):
         """AI関連ストーリーの検索が正しく動作することを確認"""
         # モックの設定
@@ -127,7 +127,7 @@ class TestHackerNewsAPI:
         
         mock_get_story.side_effect = stories
         
-        result = api.search_ai_stories(hours=24)
+        result = api.get_ai_stories(max_stories=100, hours=24)
         
         # AI関連記事のみが返されることを確認
         assert len(result) == 2
@@ -137,8 +137,8 @@ class TestHackerNewsAPI:
         # スコアで降順ソートされていることを確認
         assert result[0]['score'] >= result[1]['score']
     
-    @patch('src.api.hackernews_api.HackerNewsAPI.get_top_stories')
-    @patch('src.api.hackernews_api.HackerNewsAPI.get_story')
+    @patch('src.api.hacker_news.HackerNewsAPI.get_top_stories')
+    @patch('src.api.hacker_news.HackerNewsAPI.get_story_details')
     def test_search_ai_stories_empty(self, mock_get_story, mock_get_top_stories, api):
         """AI関連記事が見つからない場合の動作を確認"""
         mock_get_top_stories.return_value = [1001, 1002]
@@ -165,11 +165,9 @@ class TestHackerNewsAPI:
         
         mock_get_story.side_effect = stories
         
-        result = api.search_ai_stories(hours=24)
+        result = api.get_ai_stories(max_stories=100, hours=24)
         assert result == []
     
-    def test_session_persistence(self, api):
-        """HTTPセッションが再利用されることを確認"""
-        session1 = api.session
-        session2 = api.session
-        assert session1 is session2
+    def test_base_url_defined(self, api):
+        """base_url が定義されていることを確認"""
+        assert isinstance(api.base_url, str) and api.base_url.endswith('/v0')

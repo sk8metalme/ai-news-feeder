@@ -18,6 +18,13 @@ from ..api.github_trending import GitHubTrendingAPI
 from ..verification.fact_checker import FactChecker
 from ..notification.slack_notifier import SlackNotifier
 from ..utils.logger import setup_logger
+from config.settings import (
+    ENABLE_REDDIT,
+    ENABLE_GITHUB,
+    MAX_ARTICLES_PER_SOURCE,
+    CHECK_INTERVAL_HOURS,
+    NOTIFY_VERIFICATION_LEVEL,
+)
 from ..utils.deduplication import ArticleDeduplicator
 from ..utils.unified_report_generator import UnifiedReportGenerator
 
@@ -67,11 +74,11 @@ class NewsOrchestrator:
         self.deduplicator = ArticleDeduplicator()
         self.report_generator = UnifiedReportGenerator()
         
-        # 設定
+        # 設定（.env から）
         self.source_configs = {
-            "hackernews": SourceConfig(enabled=True, max_articles=5),
-            "reddit": SourceConfig(enabled=True, max_articles=5),
-            "github": SourceConfig(enabled=True, max_articles=5)
+            "hackernews": SourceConfig(enabled=True, max_articles=MAX_ARTICLES_PER_SOURCE),
+            "reddit": SourceConfig(enabled=ENABLE_REDDIT, max_articles=MAX_ARTICLES_PER_SOURCE),
+            "github": SourceConfig(enabled=ENABLE_GITHUB, max_articles=MAX_ARTICLES_PER_SOURCE),
         }
         
         # 統計情報
@@ -113,8 +120,9 @@ class NewsOrchestrator:
                     self.logger.warning(f"GitHub API initialization failed: {e}")
                     self.source_configs["github"].enabled = False
             
-            # ファクトチェッカー
-            self.fact_checker = FactChecker()
+            # ファクトチェッカー（設定に従って要約を有効/無効）
+            from config import settings as _settings
+            self.fact_checker = FactChecker(enable_summarization=_settings.ENABLE_SUMMARIZATION)
             
             # Slack通知
             self.slack_notifier = SlackNotifier()
@@ -129,25 +137,29 @@ class NewsOrchestrator:
         """Hacker Newsから記事を収集"""
         try:
             self.logger.info("Collecting articles from Hacker News...")
-            articles = self.hacker_news_api.get_top_stories(
-                limit=self.source_configs["hackernews"].max_articles * 2
+            # AI関連のストーリーを取得
+            articles = self.hacker_news_api.get_ai_stories(
+                max_stories=self.source_configs["hackernews"].max_articles * 2,
+                hours=CHECK_INTERVAL_HOURS,
             )
-            
-            # 既存の形式に合わせて変換
+
+            # 既存のArticle形式に合わせて変換
             converted_articles = []
             for article in articles:
-                converted_articles.append({
-                    "source": "hackernews",
-                    "title": article.get("title", ""),
-                    "url": article.get("url", ""),
-                    "score": article.get("score", 0),
-                    "time": article.get("time", ""),
-                    "source_specific": {
-                        "id": article.get("id", ""),
-                        "descendants": article.get("descendants", 0),
-                        "by": article.get("by", "")
+                converted_articles.append(
+                    {
+                        "source": "hackernews",
+                        "title": article.get("title", ""),
+                        "url": article.get("url", ""),
+                        "score": article.get("score", 0),
+                        "time": article.get("time", ""),
+                        "source_specific": {
+                            "id": article.get("id", ""),
+                            "descendants": article.get("descendants", 0),
+                            "by": article.get("by", ""),
+                        },
                     }
-                })
+                )
             
             self.logger.info(f"Collected {len(converted_articles)} articles from Hacker News")
             return converted_articles[:self.source_configs["hackernews"].max_articles]
@@ -289,33 +301,39 @@ class NewsOrchestrator:
                 try:
                     # ファクトチェック
                     if self.fact_checker:
-                        verification_result = self.fact_checker.verify_article({
-                            "title": article.get("title", ""),
-                            "url": article.get("url", "")
-                        })
-                        
-                        if verification_result.get("status") == "verified":
+                        verification_result = self.fact_checker.verify_article(
+                            article.get("title", ""), article.get("url", "")
+                        )
+
+                        status = verification_result.get("verification_status")
+
+                        def _should_notify(st: str) -> bool:
+                            if NOTIFY_VERIFICATION_LEVEL == "verified_only":
+                                return st == "verified"
+                            if NOTIFY_VERIFICATION_LEVEL in ("verified_or_partial", "verified_partial"):
+                                return st in ("verified", "partially_verified")
+                            return True  # all
+
+                        if status == "verified":
                             result.articles_verified += 1
                             
                             # 要約が含まれている場合
                             if verification_result.get("summary"):
                                 result.articles_summarized += 1
                             
-                            # Slack通知
-                            if self.slack_notifier:
-                                try:
-                                    # ソース情報を追加
-                                    enriched_result = verification_result.copy()
-                                    enriched_result["source"] = article.get("source", "unknown")
-                                    enriched_result["source_specific"] = article.get("source_specific", {})
-                                    
-                                    self.slack_notifier.send_verification_report(enriched_result)
-                                    result.articles_notified += 1
-                                except Exception as e:
-                                    error_msg = f"Notification failed for article: {e}"
-                                    result.errors.append(error_msg)
-                                    self.logger.error(error_msg)
-                        else:
+                        # Slack通知（設定に応じて送信）
+                        if self.slack_notifier and _should_notify(status):
+                            try:
+                                enriched_result = verification_result.copy()
+                                enriched_result["source"] = article.get("source", "unknown")
+                                enriched_result["source_specific"] = article.get("source_specific", {})
+                                self.slack_notifier.send_verification_report(enriched_result)
+                                result.articles_notified += 1
+                            except Exception as e:
+                                error_msg = f"Notification failed for article: {e}"
+                                result.errors.append(error_msg)
+                                self.logger.error(error_msg)
+                        if status != "verified":
                             warning_msg = f"Article not verified: {article.get('title', 'Unknown')[:50]}"
                             result.warnings.append(warning_msg)
                             self.logger.warning(warning_msg)

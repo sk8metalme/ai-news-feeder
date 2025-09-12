@@ -10,8 +10,9 @@ Hacker Newsで話題のAI関連ニュースの信憑性を検証し、信頼で�
 - **Slack自動投稿**: 検証済み記事と要約を構造化フォーマットで通知
 - **日次レポート**: JSON形式での詳細な分析レポートを生成
 - **自動スケジューリング**: cron または内蔵スケジューラーで定期実行
+- **Reddit/GitHub連携（オプション）**: r/MachineLearning 等と GitHub Trending からもAI関連情報を収集
 
-## 🚀 クイックスタート
+## 🚀 クイックスタート（現状まとめ）
 
 ### 1. 環境セットアップ
 
@@ -24,8 +25,8 @@ cd ai-news-feeder
 pip install -r requirements.txt
 
 # 環境変数を設定
-cp env.example .env
-# .envファイルを編集してSlack Webhook URLを設定
+cp .env.example .env
+# .envファイルを編集してSlack Webhook URLを設定（必要に応じて Reddit/GitHub 資格情報も設定）
 ```
 
 ### 2. Slack Webhook設定
@@ -39,38 +40,95 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 SLACK_CHANNEL=#ai-news
 ```
 
-### 3. Claude CLI設定（オプション - 記事要約機能）
+### 3. Claude Code CLI 設定（オプション - 記事要約機能）
 
 記事の日本語要約機能を有効にするには、Claude CLIをインストール・設定してください：
 
-1. Claude CLIをインストール: https://github.com/anthropics/claude-cli
-2. Claude CLIを設定: `claude configure`
+1. Claude Code CLIをインストール:
+   - GitHub: https://github.com/anthropics/claude-code
+   - npm: `npm install -g @anthropic-ai/claude-code`
+2. 初期設定: `claude configure`
 3. 環境変数を設定（オプション）:
 
 ```env
 ENABLE_SUMMARIZATION=true
 CLAUDE_CLI_PATH=claude
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 SUMMARIZATION_TIMEOUT=60
 ```
 
-**注意**: Claude CLI未設定でも他の機能は正常に動作します。
+**注意**: 要約機能はオプションです。未設定でも他の機能は動作します。
 
-### 4. 実行方法
+インストールと確認（概要）:
+- `@anthropic-ai/claude-code` をインストール
+- `claude configure` でログイン（Keychain に保存）
+- `claude --version` でバージョン確認（`(Claude Code)` と表示される）
+- 非対話モード確認: `claude -p "hello" --output-format text`
+
+**重要**:
+- Cron など非ログイン環境では Keychain に保存した資格情報が使えません。Cron で要約を使う場合は `.env` に `ANTHROPIC_API_KEY` を設定してください。APIキーを保存したくない場合は下記 LaunchAgent を推奨します。
+- Claude Code CLI は非対話モード（`-p`）をサポートします。
+- 要約は日本語で3–4文に凝縮されます。
+
+うまくいかない場合はドクタースクリプトを実行:
+
+```bash
+./scripts/claude_cli_doctor.sh
+```
+
+特定のバイナリを明示する場合は `.env` の `CLAUDE_CLI_PATH` を設定してください（例: `/usr/local/bin/claude`）。
+
+参考ドキュメント:
+- Anthropic Docs（Claude Code CLI）: https://docs.anthropic.com/claude/docs/claude-code-sdk
+
+### 4. Reddit/GitHub（オプション）
+
+`.env` で以下を設定すると、Reddit / GitHub Trending からも記事を収集します。
+
+- Reddit: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `ENABLE_REDDIT=true`
+- GitHub: `GITHUB_ACCESS_TOKEN`, `ENABLE_GITHUB=true`
+
+### 5. 実行方法（スケジューリング）
 
 #### 単発実行（テスト用）
 ```bash
 python main.py --run-once
 ```
 
-#### スケジューラー実行
+#### スケジューラー実行（アプリ内）
 ```bash
 python main.py --schedule
 ```
 
-#### cron設定（推奨）
+#### 運用モードA: cron（APIキーを .env に保存する）
+- `.env` を読み込むよう変更済み。`ANTHROPIC_API_KEY` を設定すれば認証が通ります。
+- Homebrew パスと UTF-8 ロケールを注入済み。
+- ワンショット実行:
 ```bash
-./install_cron.sh
+./install_cron.sh --run-in-minutes 2
 ```
+- 診断（CLI単体）:
+```bash
+./install_cron.sh --claude-test-in-minutes 1
+# 出力: logs/claude_cron_test_*.{meta,out,err}
+```
+
+#### 運用モードB: launchd（APIキーを .env に保存せず運用）
+macOS の LaunchAgent を使い、ログインセッション内で実行（Keychain 認証が利用可能）。
+- 毎日 09:00 実行（現状設定）:
+```bash
+bash scripts/setup_launchd.sh --daily-at 09:00 --no-run-at-load
+```
+- 任意間隔（例: 6時間=21600秒）:
+```bash
+bash scripts/setup_launchd.sh --interval 21600 --no-run-at-load
+```
+- 状態確認/削除:
+```bash
+launchctl list | grep com.ai-news.feeder
+bash scripts/setup_launchd.sh --remove
+```
+ログ: `logs/launchd.out.log`, `logs/launchd.err.log`
 
 ## 🧪 テスト実行
 
@@ -98,6 +156,10 @@ ai-news-feeder/
 ├── requirements.txt        # Python依存関係
 ├── install_cron.sh        # cron設定スクリプト
 ├── run_tests.py           # テスト実行スクリプト
+├── scripts/
+│   ├── claude_cli_doctor.sh     # CLI診断（version/-p動作確認）
+│   ├── claude_cron_test.sh      # cron環境での最小テスト
+│   └── setup_launchd.sh         # LaunchAgent の管理
 ├── pytest.ini            # pytest設定
 ├── config/
 │   └── settings.py        # 設定ファイル
@@ -122,6 +184,13 @@ ai-news-feeder/
 
 ## ⚙️ 設定
 
+### 環境変数（主要）
+- Slack: `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`
+- 要約（任意）: `ENABLE_SUMMARIZATION`, `CLAUDE_CLI_PATH`, `SUMMARIZATION_TIMEOUT`, `ANTHROPIC_API_KEY`（cron運用時）
+- Reddit（任意）: `ENABLE_REDDIT`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+- GitHub（任意）: `ENABLE_GITHUB`, `GITHUB_ACCESS_TOKEN`
+- 収集件数: `MAX_ARTICLES_PER_SOURCE`（各ソースの上限。既定 5）
+
 ### キーワード設定
 `config/settings.py`でAI関連キーワードをカスタマイズ可能:
 
@@ -132,10 +201,11 @@ AI_KEYWORDS = [
 ]
 ```
 
-### 検証設定
-- **スコア閾値**: 50点以上のHacker News記事を対象
-- **記事数制限**: 1日最大5件の記事を投稿
-- **検証間隔**: 24時間ごとに実行
+### 検証/取得設定
+- **スコア閾値**: 50点以上のHacker News記事を対象（`config/settings.py`）
+- **記事数制限**: 1日最大5件の記事を投稿（`config/settings.py`）
+- **検証間隔**: 24時間ごとに実行（`config/settings.py`）
+- **ソース有効化/件数**: `.env` の `ENABLE_REDDIT` / `ENABLE_GITHUB` / `MAX_ARTICLES_PER_SOURCE`
 
 ## 📈 投稿フォーマット
 
@@ -217,6 +287,14 @@ python -m pytest tests/ --cov=src --cov-report=term-missing
    - Webhook URLが正しく設定されているか確認
    - ネットワーク接続を確認
 
+2. **cronで要約が失敗する（rc=1、stderr空、`Invalid API key · Please run /login`）**
+   - `.env` に `ANTHROPIC_API_KEY` を設定してください（`install_cron.sh` が `.env` をロードします）
+   - 代替: LaunchAgent（`scripts/setup_launchd.sh`）で運用し、Keychain の認証を利用
+   - 最小再現: `./install_cron.sh --claude-test-in-minutes 1` → `logs/claude_cron_test_*.{meta,out,err}` を確認
+
+3. **403で本文取得に失敗する（例: Economist）**
+   - 対象サイトのブロックが原因です。要約はスキップされ、通知は継続されます。
+
 2. **記事が見つからない**
    - AI_KEYWORDSの設定を確認
    - SCORE_THRESHOLDを下げて試行
@@ -237,7 +315,7 @@ logger.setLevel(logging.DEBUG)  # より詳細なログ
 
 ## 🛣️ 今後の開発予定
 
-- [ ] Reddit API、GitHub Trending対応
+- [x] Reddit API、GitHub Trending対応
 - [ ] 3段階信憑性評価（高/中/低）
 - [ ] Google Translate API連携での日本語対応
 - [ ] Web UI での手動検証機能

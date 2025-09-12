@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI News Feeder is a Python application that monitors Hacker News for AI-related articles, verifies their credibility through fact-checking, summarizes them using Claude CLI, and sends notifications to Slack.
+AI News Feeder is a Python application that monitors Hacker News for AI-related articles, verifies their credibility through fact-checking, summarizes them using Claude Code CLI (non-interactive `-p`), and sends notifications to Slack.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ AI News Feeder is a Python application that monitors Hacker News for AI-related 
 - **Scheduler**: `src/scheduler.py` - Orchestrates the verification pipeline
 - **API Layer**: `src/api/hacker_news.py` - Hacker News API client
 - **Verification**: `src/verification/fact_checker.py` - Fact-checking via dev.to and Medium
-- **Summarization**: `src/utils/article_summarizer.py` - Claude CLI integration for Japanese summaries
+- **Summarization**: `src/utils/article_summarizer.py` - Claude Code CLI (`-p`) integration for Japanese summaries
 - **Notification**: `src/notification/slack_notifier.py` - Slack webhook integration
 - **Reporting**: `src/utils/report_generator.py` - JSON report generation
 
@@ -21,7 +21,7 @@ AI News Feeder is a Python application that monitors Hacker News for AI-related 
 1. HackerNewsAPI fetches top stories with score > 50
 2. Articles filtered by AI keywords (ChatGPT, Claude, AI, LLM, etc.)
 3. FactChecker verifies credibility via dev.to/Medium search
-4. ArticleSummarizer generates Japanese summaries via Claude CLI
+4. ArticleSummarizer generates Japanese summaries via Claude Code CLI (`-p`)
 5. SlackNotifier sends formatted messages with verification status
 6. ReportGenerator creates daily JSON reports in `data/`
 
@@ -50,8 +50,11 @@ python main.py --run-once
 # Scheduled mode (default)
 python main.py --schedule
 
-# Install cron job for automation
+# Install cron job for automation (loads .env and UTF-8 PATH)
 ./install_cron.sh
+
+# LaunchAgent (macOS) for API-keyless operation using Keychain credentials
+bash scripts/setup_launchd.sh --daily-at 09:00 --no-run-at-load
 ```
 
 ### Dependencies
@@ -65,9 +68,10 @@ pip install -r requirements.txt
 ### Environment Variables (.env)
 - `SLACK_WEBHOOK_URL` - Slack incoming webhook URL (required)
 - `SLACK_CHANNEL` - Slack channel (default: #ai-news)
-- `ENABLE_SUMMARIZATION` - Enable Claude CLI summaries (default: true)
-- `CLAUDE_CLI_PATH` - Path to Claude CLI binary (default: claude)
-- `SUMMARIZATION_TIMEOUT` - Claude CLI timeout in seconds (default: 60)
+- `ENABLE_SUMMARIZATION` - Enable Claude summaries (default: true)
+- `CLAUDE_CLI_PATH` - Path to Claude binary (default: claude)
+- `SUMMARIZATION_TIMEOUT` - Summarization timeout in seconds (default: 60)
+- `ANTHROPIC_API_KEY` - Set for cron runs (cron cannot access Keychain)
 
 ### Settings (config/settings.py)
 - `SCORE_THRESHOLD` - Minimum HN score (default: 50)
@@ -79,7 +83,7 @@ pip install -r requirements.txt
 
 ### Error Handling
 - All modules use `src/utils/logger.py` for consistent logging
-- Claude CLI failures gracefully degrade (no summarization)
+- Claude CLI failures gracefully degrade (no summarization). Summarizer tries multiple invocation strategies and logs stdout/stderr (truncated).
 - Network timeouts and API rate limits are handled
 - Failed articles are logged but don't stop the pipeline
 

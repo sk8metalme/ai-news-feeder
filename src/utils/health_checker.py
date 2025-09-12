@@ -137,13 +137,17 @@ class HealthChecker:
             response_time = time.time() - start_time
             
             if result.returncode == 0:
-                version = result.stdout.strip()
+                version = (result.stdout or '').strip()
+                status = 'healthy'
+                msg = 'Claude CLI available and configured'
+                if 'Claude Code' in version:
+                    msg = "Claude Code CLI detected (supports -p non-interactive mode)"
                 return {
                     'service': 'Claude CLI',
-                    'status': 'healthy',
+                    'status': status,
                     'response_time_ms': round(response_time * 1000, 2),
                     'version': version,
-                    'message': 'Claude CLI available and configured'
+                    'message': msg
                 }
             else:
                 return {

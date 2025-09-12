@@ -189,7 +189,7 @@ class TestRedditAPI:
                 assert filtered[0].score == 100
     
     @patch('time.sleep')
-    def test_get_ai_news_from_subreddits(self, mock_sleep, mock_reddit_instance):
+    def test_get_ai_news_from_subreddits(self, mock_sleep, mock_reddit_instance, sample_reddit_post):
         """複数subredditからのAI関連ニュース取得テスト"""
         with patch.dict(os.environ, {
             'REDDIT_CLIENT_ID': 'test_id',

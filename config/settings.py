@@ -37,3 +37,19 @@ SUMMARIZATION_TIMEOUT = int(os.getenv("SUMMARIZATION_TIMEOUT", "60"))  # seconds
 # File paths
 LOG_DIR = "logs"
 DATA_DIR = "data"
+
+# Source toggles
+ENABLE_REDDIT = os.getenv("ENABLE_REDDIT", "true").lower() == "true"
+ENABLE_GITHUB = os.getenv("ENABLE_GITHUB", "true").lower() == "true"
+MAX_ARTICLES_PER_SOURCE = int(os.getenv("MAX_ARTICLES_PER_SOURCE", "5"))
+
+# Reddit filtering
+REDDIT_SCORE_THRESHOLD = int(os.getenv("REDDIT_SCORE_THRESHOLD", "40"))
+
+# Notification behavior
+# one of: 'verified_only', 'verified_or_partial', 'all'
+NOTIFY_VERIFICATION_LEVEL = os.getenv("NOTIFY_VERIFICATION_LEVEL", "verified_only").lower()
+
+# Title translation (Slack display)
+TRANSLATE_TITLES = os.getenv("TRANSLATE_TITLES", "true").lower() == "true"
+SLACK_JA_UI = os.getenv("SLACK_JA_UI", "false").lower() == "true"
