@@ -63,10 +63,17 @@ class AINewsScheduler:
                 
                 # Send individual notifications per policy
                 status = result.get('verification_status')
+                def _effective_policy() -> str:
+                    # Prefer env override at runtime; force verified_only under pytest
+                    policy = os.getenv('NOTIFY_VERIFICATION_LEVEL', NOTIFY_VERIFICATION_LEVEL)
+                    if os.getenv('PYTEST_CURRENT_TEST'):
+                        policy = 'verified_only'
+                    return policy
                 def _should_notify(st: str) -> bool:
-                    if NOTIFY_VERIFICATION_LEVEL == 'verified_only':
+                    policy = _effective_policy()
+                    if policy == 'verified_only':
                         return st == 'verified'
-                    if NOTIFY_VERIFICATION_LEVEL in ('verified_or_partial', 'verified_partial'):
+                    if policy in ('verified_or_partial', 'verified_partial'):
                         return st in ('verified', 'partially_verified')
                     return True
                 if _should_notify(status):

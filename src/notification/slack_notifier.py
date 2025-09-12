@@ -5,7 +5,8 @@ import requests
 import json
 from typing import Dict, List
 from ..utils.logger import get_logger
-from config.settings import SLACK_WEBHOOK_URL, SLACK_CHANNEL
+from config.settings import SLACK_WEBHOOK_URL, SLACK_CHANNEL, TRANSLATE_TITLES, SLACK_JA_UI
+from src.utils.article_summarizer import ArticleSummarizer
 
 logger = get_logger(__name__)
 
@@ -15,10 +16,35 @@ class SlackNotifier:
     
     def __init__(self, webhook_url: str = None):
         self.webhook_url = webhook_url if webhook_url is not None else SLACK_WEBHOOK_URL
+        # Cache a single summarizer instance and its availability to avoid repeated CLI checks
+        self._summarizer = None
+        self._summarizer_available = None
         
+    def _translate_title_if_needed(self, title: str) -> str:
+        if not TRANSLATE_TITLES:
+            return title
+        try:
+            # Lazy-init summarizer once per notifier
+            if self._summarizer is None:
+                self._summarizer = ArticleSummarizer()
+                # Cache availability to suppress repeated warnings if unavailable
+                try:
+                    self._summarizer_available = self._summarizer.is_available()
+                except Exception:
+                    self._summarizer_available = False
+            if self._summarizer_available is False:
+                return title
+            jp = self._summarizer.translate_to_japanese(title)  # type: ignore[attr-defined]
+            return jp or title
+        except Exception:
+            # If anything goes wrong, disable further attempts for this run
+            self._summarizer_available = False
+            return title
+
     def format_verification_report(self, verification_result: Dict) -> str:
         """Format verification result into Slack message"""
         article_title = verification_result.get('article_title', 'Unknown')
+        article_title = self._translate_title_if_needed(article_title)
         article_url = verification_result.get('article_url', '')
         status = verification_result.get('verification_status', 'unknown')
         total_count = verification_result.get('total_related_count', 0)
@@ -28,20 +54,30 @@ class SlackNotifier:
         medium_count = len(verification_result.get('related_articles', {}).get('medium', []))
         
         # Create status emoji
-        if status == "verified":
-            status_emoji = "✅"
-        elif status == "partially_verified":
-            status_emoji = "🟡"
+        status_emoji = "✅" if status == "verified" else ("🟡" if status == "partially_verified" else "❌")
+
+        if SLACK_JA_UI:
+            header = "📊 AIニュース検証レポート"
+            lines = [
+                f"{status_emoji} **タイトル**: {article_title}",
+                "🔗 **出典**: Hacker News",
+                f"📈 **検証**: 関連記事 {total_count} 件",
+                f"📚 **内訳**: dev.to({dev_to_count}), Medium({medium_count})",
+                f"🌐 **URL**: {article_url}",
+                f"⏰ **確認時刻**: {checked_at}",
+            ]
         else:
-            status_emoji = "❌"
-        
-        message = f"""📊 AI News Verification Report
-{status_emoji} **Topic**: {article_title}
-🔗 **Source**: Hacker News
-📈 **Verified**: {total_count} related articles found
-📚 **Links**: dev.to({dev_to_count}), Medium({medium_count})
-🌐 **URL**: {article_url}
-⏰ **Checked**: {checked_at}"""
+            header = "📊 AI News Verification Report"
+            lines = [
+                f"{status_emoji} **Topic**: {article_title}",
+                "🔗 **Source**: Hacker News",
+                f"📈 **Verified**: {total_count} related articles found",
+                f"📚 **Links**: dev.to({dev_to_count}), Medium({medium_count})",
+                f"🌐 **URL**: {article_url}",
+                f"⏰ **Checked**: {checked_at}",
+            ]
+
+        message = header + "\n" + "\n".join(lines)
         
         # Add summary if available
         summary = verification_result.get('summary')

@@ -1,61 +1,45 @@
-# Phase 3: Reddit/GitHub Orchestration + Notifications & Summarization Improvements
+# v1.4.0: Claude Code CLI 対応・cron/launchd 運用強化・ドキュメント刷新
 
 ## Summary
-This PR delivers Phase 3 integration and productionization:
-
-- Add full-source orchestration (Hacker News + optional Reddit/GitHub) controlled by .env toggles.
-- Add flexible notifications policy (verified_only | verified_or_partial | all) to control Slack delivery.
-- Make summarization configurable; enable Claude CLI summaries with non‑text guard.
-- Stabilize GitHub/Reddit per-source dedup; avoid over-aggressive global dedup at API layer.
-- Remove legacy modules; unify on new APIs; update docs.
-- End-to-end production checks: health check + one-off runs verified with Slack delivery.
+本PRでは、要約バックエンドを Claude Code CLI（非対話 `-p`）に最適化し、cron/launchd 双方での安定運用を実現。診断スクリプトの追加とドキュメント刷新により、原因切り分けと運用手順を明確化しました。
 
 ## Key Changes
-- Orchestrator
-  - `src/orchestrator/news_orchestrator.py`: Enable sources via `ENABLE_REDDIT`, `ENABLE_GITHUB`, cap via `MAX_ARTICLES_PER_SOURCE`.
-  - Honor `NOTIFY_VERIFICATION_LEVEL` for per-article Slack notifications.
-- Scheduler
-  - `src/scheduler.py`: Same notification policy applied to single-run workflow.
-- Reddit/GitHub APIs
-  - `src/api/reddit_api.py`: `REDDIT_SCORE_THRESHOLD` (default 40) and per-subreddit dedup; use settings by default.
-  - `src/api/github_trending.py`: Per-language dedup; import changed for easier test patching.
-- Summarization
-  - `src/utils/article_summarizer.py`: Skip non-text content; keep summaries short; configurable by `ENABLE_SUMMARIZATION`.
-- Settings / Env
-  - `config/settings.py`: Add `REDDIT_SCORE_THRESHOLD`, `NOTIFY_VERIFICATION_LEVEL`.
-  - `.env.example`: Updated with new toggles and policy; sample shows `NOTIFY_VERIFICATION_LEVEL=all`.
-- Cleanup / Deprecations
-  - Remove legacy modules: `src/api/hackernews_api.py`, `src/api/factcheck_api.py`, `src/utils/slack_notifier.py`, `src/utils/config.py`.
-  - Update tests to use `src/api/hacker_news.py`.
+- Summarization（要約）
+  - `src/utils/article_summarizer.py`:
+    - Claude Code CLI（`-p/--output-format text`）への最適化と多段フォールバック。
+    - ANSIカラー除去、詳細ログ（stdout/stderr 先頭を記録）、可用性キャッシュ、タイムアウト尊重。
+    - APIキー未検出時の注意ログを追加（cronでの認証失敗を早期に可視化）。
+- Slack 通知
+  - `src/notification/slack_notifier.py`: サマライザの遅延生成＋可用性キャッシュで WARNING の多重出力を抑止。
+- Health Check
+  - `src/utils/health_checker.py`: Claude Code CLI を healthy と扱い、説明文を更新。
+- Scheduling / Ops
+  - `install_cron.sh`: `.env` の自動ロード（`ENV_LOAD`）、PATH/UTF-8 注入、ワンショット（`--run-in-minutes`）/診断（`--claude-test-in-minutes`）を追加。
+  - `scripts/setup_launchd.sh`: macOS LaunchAgent 管理（`--daily-at`/`--interval`/`--no-run-at-load`）。Keychain 認証を再利用して APIキー無し運用が可能。
+  - 新規診断: `scripts/claude_cli_doctor.sh`（バージョン/`-p`動作確認）、`scripts/claude_cron_test.sh`（cron最小再現・stdout/stderr/meta 保存）。
 - Docs
-  - `README.md`, `CHANGELOG.md`, `specs/001-reddit-api-github/spec.md` updated.
-  - New `docs/ARCHITECTURE.md` (v1.3 overview, modules, toggles, and deprecations).
+  - `README.md`: Claude Code CLI セットアップ、運用モードA（cron）/B（launchd）、診断手順を追加。
+  - `docs/context.md`, `docs/ARCHITECTURE.md`: 現行フロー・構成（v1.4）へ更新。
+  - `CHANGELOG.md`: 1.4.0 を追加（本PRの要約）。
+  - `CLAUDE.md`: 非対話 `-p` 仕様に合わせて更新。
 
-## Tests
-- `pytest`: 126 passed, 1 skipped.
-- Updated tests: `tests/test_hackernews_api.py`, `tests/test_reddit_api.py`.
+## Backward Compatibility / Migrations
+- 既存の `.env` はそのまま利用可能。
+- cron 運用で Keychain を使わない場合は `.env` に `ANTHROPIC_API_KEY` を設定してください。
+- launchd 運用の場合、`.env` に APIキー不要（`claude configure` 済み前提）。
 
-## Production Verification
-- Health check run → Slack report OK.
-- One-off runs:
-  - HN only / with summarization off → OK (verified + summary messages)
-  - HN+Reddit (low caps, score threshold 40) → OK
-  - Summarization enabled end-to-end → summaries present in Slack
-- Cron installed: daily at 09:00 (see `install_cron.sh`).
+## Verification
+- 手動確認: `claude -p "hello" --output-format text` が端末で成功。
+- 診断結果: `./install_cron.sh --claude-test-in-minutes 1` 実行後、`logs/claude_cron_test_*.{meta,out,err}` にて API キー未設定時の失敗を確認（Invalid API key）。
+- アプリログ: `logs/ai_news_feeder_YYYYMMDD.log` に要約実行の詳細ログ（どの経路で成功/失敗したか）を記録。
+- LaunchAgent: `bash scripts/setup_launchd.sh --daily-at 09:00 --no-run-at-load` で毎日 09:00 実行に設定済み。
 
-## Migration Notes
-- Depending modules should import:
-  - HN: `src/api/hacker_news.HackerNewsAPI`
-  - Fact checker: `src/verification/fact_checker.FactChecker`
-  - Slack: `src/notification/slack_notifier.SlackNotifier`
-- Configure via `.env`:
-  - `ENABLE_REDDIT`, `ENABLE_GITHUB`, `MAX_ARTICLES_PER_SOURCE`
-  - `REDDIT_SCORE_THRESHOLD`
-  - `ENABLE_SUMMARIZATION`
-  - `NOTIFY_VERIFICATION_LEVEL`
+## Rollout Notes
+- 運用モードの推奨:
+  - APIキーを.envに保存したくない場合 → LaunchAgent（macOS）で Keychain を利用。
+  - サーバー運用やCI環境 → cron + `.env` の `ANTHROPIC_API_KEY`。
+- Slack 通知ノイズを抑えるには、`NOTIFY_VERIFICATION_LEVEL=verified_or_partial` を検討。
 
-## Rollout Recommendations
-- Start with `NOTIFY_VERIFICATION_LEVEL=verified_or_partial` to limit noise.
-- Adjust `MAX_ARTICLES_PER_SOURCE` and `REDDIT_SCORE_THRESHOLD` based on daily volume.
-- Keep `ENABLE_SUMMARIZATION=true` for better signal; skip for high-traffic hours if needed.
-
+## Follow-ups（別PR）
+- テスト更新：`test_article_summarizer.py` を `-p` 仕様へ刷新、stderr/stdout 検証を追加。
+- 失敗時バックオフ・要約結果キャッシュ（同一URL/同一日）で負荷最適化。
