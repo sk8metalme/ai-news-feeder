@@ -16,6 +16,7 @@ class TestArticleSummarizer:
     
     def setup_method(self):
         """Setup test instance"""
+        ArticleSummarizer._last_request_ts = 0.0
         self.summarizer = ArticleSummarizer()
     
     @patch('subprocess.run')
@@ -23,6 +24,7 @@ class TestArticleSummarizer:
         """Test successful Claude CLI availability check"""
         mock_run.return_value = Mock(returncode=0, stdout="Claude CLI v1.0.0")
         
+        self.summarizer._available = None
         result = self.summarizer._check_claude_cli_availability()
         
         assert result is True
@@ -30,7 +32,8 @@ class TestArticleSummarizer:
             ["claude", "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            env=None
         )
     
     @patch('subprocess.run')
@@ -134,19 +137,17 @@ class TestArticleSummarizer:
         result = self.summarizer._call_claude_cli(prompt)
         
         assert result == "これはテスト要約です。AI技術について説明しています。"
-        mock_run.assert_called_once_with(
-            ["claude", "--print", "Test prompt for summarization"],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        assert mock_run.called
+        call_args = mock_run.call_args
+        assert call_args[1]['timeout'] == 120
     
     @patch('subprocess.run')
-    def test_call_claude_cli_failure(self, mock_run):
-        """Test Claude CLI call failure"""
-        # Mock subprocess failure
+    @patch('time.sleep')
+    def test_call_claude_cli_failure(self, mock_sleep, mock_run):
+        """Test Claude CLI call failure with retry mechanism"""
         mock_run.return_value = Mock(
             returncode=1,
+            stdout="",
             stderr="Claude CLI error"
         )
         
@@ -154,6 +155,7 @@ class TestArticleSummarizer:
         result = self.summarizer._call_claude_cli(prompt)
         
         assert result is None
+        assert mock_run.call_count >= 3
     
     @patch.object(ArticleSummarizer, '_check_claude_cli_availability')
     @patch.object(ArticleSummarizer, '_fetch_article_content')
@@ -208,3 +210,20 @@ class TestArticleSummarizer:
         
         mock_check.return_value = False
         assert self.summarizer.is_available() is False
+    
+    @patch('time.sleep')
+    @patch('time.monotonic')
+    def test_rate_limiting(self, mock_monotonic, mock_sleep):
+        """Test rate limiting between Claude CLI calls"""
+        ArticleSummarizer._last_request_ts = 0.0
+        mock_monotonic.side_effect = [1.0, 2.0, 7.0, 12.0]
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 0
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 1
+        assert abs(mock_sleep.call_args[0][0] - 4.0) < 0.1
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 1
