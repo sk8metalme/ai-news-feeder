@@ -3,7 +3,7 @@ Tests for article summarizer module
 """
 import pytest
 import responses
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch, mock_open, ANY
 import subprocess
 import tempfile
 import os
@@ -23,14 +23,18 @@ class TestArticleSummarizer:
         """Test successful Claude CLI availability check"""
         mock_run.return_value = Mock(returncode=0, stdout="Claude CLI v1.0.0")
         
-        result = self.summarizer._check_claude_cli_availability()
+        # Create a fresh instance after patching so __init__ picks up the mock
+        summarizer = ArticleSummarizer()
+        result = summarizer._check_claude_cli_availability()
         
         assert result is True
+        # env は実装上 None を明示的に渡すため、ANY で許容
         mock_run.assert_called_once_with(
             ["claude", "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            env=ANY,
         )
     
     @patch('subprocess.run')
@@ -134,12 +138,15 @@ class TestArticleSummarizer:
         result = self.summarizer._call_claude_cli(prompt)
         
         assert result == "これはテスト要約です。AI技術について説明しています。"
-        mock_run.assert_called_once_with(
-            ["claude", "--print", "Test prompt for summarization"],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        # 最初の試行は 'args_print'（claude --print <prompt>）を想定
+        called_args, called_kwargs = mock_run.call_args
+        assert called_args[0][:2] == ["claude", "--print"]
+        assert called_args[0][2] == "Test prompt for summarization"
+        assert called_kwargs.get("capture_output") is True
+        assert called_kwargs.get("text") is True
+        assert called_kwargs.get("timeout") == 60
+        # env は明示的に渡すため存在しているはず
+        assert "env" in called_kwargs
     
     @patch('subprocess.run')
     def test_call_claude_cli_failure(self, mock_run):
@@ -147,6 +154,7 @@ class TestArticleSummarizer:
         # Mock subprocess failure
         mock_run.return_value = Mock(
             returncode=1,
+            stdout="",
             stderr="Claude CLI error"
         )
         

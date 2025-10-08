@@ -7,6 +7,7 @@ import json
 from unittest.mock import Mock, patch
 
 from src.notification.slack_notifier import SlackNotifier
+from src.notification import slack_notifier as slack_mod
 
 
 class TestSlackNotifier:
@@ -16,6 +17,10 @@ class TestSlackNotifier:
         """Setup test instance"""
         self.webhook_url = "https://hooks.slack.com/services/TEST/WEBHOOK/URL"
         self.notifier = SlackNotifier(webhook_url=self.webhook_url)
+        # Force English UI in tests to match expectations
+        slack_mod.SLACK_JA_UI = False
+        # Avoid title translation (prevents CLI spawn during tests)
+        slack_mod.TRANSLATE_TITLES = False
     
     def test_format_verification_report(self, sample_verification_result):
         """Test formatting of verification report"""

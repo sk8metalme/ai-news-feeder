@@ -1,0 +1,857 @@
+openapi: 3.0.3
+info:
+  title: AI News Feeder API
+  description: |
+    AI関連ニュースの自動監視・検証・配信システムのAPI仕様書
+    
+    ## 概要
+    AI News Feederは複数のソース（Hacker News、Reddit、GitHub）からAI関連ニュースを収集し、
+    ファクトチェック・要約を行い、Slackに配信するシステムです。
+    
+    ## 主要機能
+    - ニュース収集・フィルタリング
+    - ファクトチェック・信憑性検証
+    - Claude CLIによる記事要約
+    - Slack通知配信
+    - システムヘルスチェック
+    
+  version: 1.4.0
+  contact:
+    name: AI News Feeder Team
+    email: team@ai-news-feeder.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: ローカル開発環境
+  - url: https://api.ai-news-feeder.com
+    description: 本番環境
+
+tags:
+  - name: news
+    description: ニュース収集・処理
+  - name: verification
+    description: ファクトチェック・検証
+  - name: summarization
+    description: 記事要約
+  - name: notification
+    description: 通知配信
+  - name: health
+    description: システム監視
+  - name: reports
+    description: レポート・統計
+
+paths:
+  /api/v1/news/collect:
+    post:
+      tags:
+        - news
+      summary: ニュース収集実行
+      description: |
+        複数のソースからAI関連ニュースを収集し、フィルタリングを実行します。
+        
+        ## 処理フロー
+        1. 各ソース（Hacker News、Reddit、GitHub）からデータ取得
+        2. AIキーワードによるフィルタリング
+        3. スコア閾値によるフィルタリング
+        4. 重複記事の除去
+        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewsCollectionRequest'
+            examples:
+              default:
+                summary: デフォルト設定での収集
+                value:
+                  sources: ["hackernews", "reddit", "github"]
+                  max_articles_per_source: 5
+                  filters:
+                    score_threshold: 50
+                    hours_limit: 24
+              hackernews_only:
+                summary: Hacker Newsのみ
+                value:
+                  sources: ["hackernews"]
+                  max_articles_per_source: 10
+                  filters:
+                    score_threshold: 30
+      responses:
+        '200':
+          description: ニュース収集成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsCollectionResponse'
+        '400':
+          description: リクエストパラメータエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/verification/verify:
+    post:
+      tags:
+        - verification
+      summary: 記事検証実行
+      description: |
+        指定された記事のファクトチェックを実行します。
+        
+        ## 検証プロセス
+        1. dev.to APIで関連記事検索
+        2. Medium RSSで関連記事検索
+        3. 関連記事数による信憑性評価
+        4. 検証結果の構造化
+        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationRequest'
+      responses:
+        '200':
+          description: 検証完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+        '400':
+          description: リクエストエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/summarization/summarize:
+    post:
+      tags:
+        - summarization
+      summary: 記事要約生成
+      description: |
+        Claude CLIを使用して記事の日本語要約を生成します。
+        
+        ## 要約プロセス
+        1. 記事URLからコンテンツ取得
+        2. Claude CLIでプロンプト処理
+        3. 3-4文の日本語要約生成
+        4. エラーハンドリング・フォールバック
+        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SummarizationRequest'
+      responses:
+        '200':
+          description: 要約生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummarizationResponse'
+        '400':
+          description: リクエストエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Claude CLI利用不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/notification/send:
+    post:
+      tags:
+        - notification
+      summary: Slack通知送信
+      description: |
+        検証済み記事をSlackに通知します。
+        
+        ## 通知内容
+        - 記事タイトル・URL
+        - 検証結果・関連記事数
+        - 要約（利用可能な場合）
+        - ソース情報・スコア
+        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      responses:
+        '200':
+          description: 通知送信成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '400':
+          description: リクエストエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/health:
+    get:
+      tags:
+        - health
+      summary: システムヘルスチェック
+      description: |
+        システム全体の稼働状況を確認します。
+        
+        ## チェック項目
+        - 外部API接続状況
+        - Claude CLI可用性
+        - ファイルシステム状況
+        - システムリソース
+        
+      responses:
+        '200':
+          description: ヘルスチェック完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '503':
+          description: システム異常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+  /api/v1/reports/daily/{date}:
+    get:
+      tags:
+        - reports
+      summary: 日次レポート取得
+      description: |
+        指定日の処理結果レポートを取得します。
+        
+      parameters:
+        - name: date
+          in: path
+          required: true
+          description: レポート日付（YYYY-MM-DD形式）
+          schema:
+            type: string
+            format: date
+            example: "2025-09-23"
+      responses:
+        '200':
+          description: レポート取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyReportResponse'
+        '404':
+          description: レポートが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    # リクエストスキーマ
+    NewsCollectionRequest:
+      type: object
+      required:
+        - sources
+      properties:
+        sources:
+          type: array
+          items:
+            type: string
+            enum: [hackernews, reddit, github]
+          description: 収集対象ソース
+          example: ["hackernews", "reddit"]
+        max_articles_per_source:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+          description: ソース別最大記事数
+        filters:
+          $ref: '#/components/schemas/CollectionFilters'
+
+    CollectionFilters:
+      type: object
+      properties:
+        score_threshold:
+          type: integer
+          minimum: 0
+          default: 50
+          description: スコア閾値
+        hours_limit:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 24
+          description: 収集対象時間（時間）
+        keywords:
+          type: array
+          items:
+            type: string
+          description: 追加キーワード
+
+    VerificationRequest:
+      type: object
+      required:
+        - articles
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+          description: 検証対象記事リスト
+
+    SummarizationRequest:
+      type: object
+      required:
+        - articles
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+          description: 要約対象記事リスト
+        timeout:
+          type: integer
+          minimum: 10
+          maximum: 300
+          default: 60
+          description: タイムアウト（秒）
+
+    NotificationRequest:
+      type: object
+      required:
+        - verification_results
+      properties:
+        verification_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VerificationResult'
+          description: 通知対象の検証結果
+        channel:
+          type: string
+          description: 通知先チャンネル
+          example: "#ai-news"
+
+    # レスポンススキーマ
+    NewsCollectionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+        total_articles:
+          type: integer
+          description: 収集記事総数
+        articles_by_source:
+          type: object
+          additionalProperties:
+            type: integer
+          description: ソース別記事数
+          example:
+            hackernews: 8
+            reddit: 4
+            github: 3
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+          description: 収集記事リスト
+        processing_time:
+          type: number
+          format: float
+          description: 処理時間（秒）
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 警告メッセージ
+
+    VerificationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+        verification_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VerificationResult'
+          description: 検証結果リスト
+        processing_time:
+          type: number
+          format: float
+          description: 処理時間（秒）
+
+    SummarizationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+        summarization_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummarizationResult'
+          description: 要約結果リスト
+        claude_cli_available:
+          type: boolean
+          description: Claude CLI可用性
+        processing_time:
+          type: number
+          format: float
+          description: 処理時間（秒）
+
+    NotificationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 送信成功フラグ
+        notifications_sent:
+          type: integer
+          description: 送信通知数
+        failed_notifications:
+          type: integer
+          description: 送信失敗数
+        webhook_url_configured:
+          type: boolean
+          description: Webhook URL設定状況
+
+    HealthCheckResponse:
+      type: object
+      properties:
+        overall_status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: 全体ステータス
+        timestamp:
+          type: string
+          format: date-time
+          description: チェック実行時刻
+        services:
+          type: object
+          properties:
+            hacker_news_api:
+              $ref: '#/components/schemas/ServiceHealth'
+            dev_to_api:
+              $ref: '#/components/schemas/ServiceHealth'
+            medium_rss:
+              $ref: '#/components/schemas/ServiceHealth'
+            claude_cli:
+              $ref: '#/components/schemas/ServiceHealth'
+            slack_webhook:
+              $ref: '#/components/schemas/ServiceHealth'
+        system_resources:
+          $ref: '#/components/schemas/SystemResources'
+
+    DailyReportResponse:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ReportMetadata'
+        summary:
+          $ref: '#/components/schemas/ReportSummary'
+        source_analysis:
+          $ref: '#/components/schemas/SourceAnalysis'
+        performance_metrics:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        quality_assessment:
+          $ref: '#/components/schemas/QualityAssessment'
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: 改善推奨事項
+
+    # データモデル
+    Article:
+      type: object
+      required:
+        - source
+        - title
+        - url
+        - score
+        - time
+      properties:
+        source:
+          type: string
+          enum: [hackernews, reddit, github]
+          description: ソース名
+        title:
+          type: string
+          description: 記事タイトル
+        url:
+          type: string
+          format: uri
+          description: 記事URL
+        score:
+          type: integer
+          description: スコア（いいね数、スター数等）
+        time:
+          type: string
+          format: date-time
+          description: 投稿時刻
+        source_specific:
+          type: object
+          description: ソース固有データ
+          oneOf:
+            - $ref: '#/components/schemas/HackerNewsData'
+            - $ref: '#/components/schemas/RedditData'
+            - $ref: '#/components/schemas/GitHubData'
+
+    HackerNewsData:
+      type: object
+      properties:
+        story_id:
+          type: integer
+          description: ストーリーID
+        descendants:
+          type: integer
+          description: コメント数
+        by:
+          type: string
+          description: 投稿者
+
+    RedditData:
+      type: object
+      properties:
+        reddit_id:
+          type: string
+          description: Reddit投稿ID
+        subreddit:
+          type: string
+          description: サブレディット名
+        author:
+          type: string
+          description: 投稿者
+        num_comments:
+          type: integer
+          description: コメント数
+        permalink:
+          type: string
+          description: Reddit内リンク
+        flair_text:
+          type: string
+          nullable: true
+          description: フレアテキスト
+        is_self:
+          type: boolean
+          description: セルフポストフラグ
+        selftext:
+          type: string
+          description: セルフテキスト
+
+    GitHubData:
+      type: object
+      properties:
+        github_id:
+          type: integer
+          description: GitHub リポジトリID
+        full_name:
+          type: string
+          description: フルネーム（owner/repo）
+        description:
+          type: string
+          description: リポジトリ説明
+        language:
+          type: string
+          description: 主要言語
+        topics:
+          type: array
+          items:
+            type: string
+          description: トピックタグ
+        owner:
+          type: string
+          description: オーナー名
+        stars_count:
+          type: integer
+          description: スター数
+        forks_count:
+          type: integer
+          description: フォーク数
+        watchers_count:
+          type: integer
+          description: ウォッチャー数
+        open_issues_count:
+          type: integer
+          description: オープンイシュー数
+        created_at:
+          type: string
+          format: date-time
+          description: 作成日時
+        pushed_at:
+          type: string
+          format: date-time
+          description: 最終プッシュ日時
+        readme_content:
+          type: string
+          nullable: true
+          description: README内容
+        size:
+          type: integer
+          description: リポジトリサイズ
+
+    VerificationResult:
+      type: object
+      properties:
+        article:
+          $ref: '#/components/schemas/Article'
+        verification_status:
+          type: string
+          enum: [verified, unverified, partial]
+          description: 検証ステータス
+        related_articles_count:
+          type: integer
+          description: 関連記事数
+        sources:
+          type: object
+          properties:
+            dev_to:
+              type: integer
+              description: dev.to関連記事数
+            medium:
+              type: integer
+              description: Medium関連記事数
+        verification_time:
+          type: string
+          format: date-time
+          description: 検証実行時刻
+        summary:
+          type: string
+          nullable: true
+          description: 記事要約
+        summary_status:
+          type: string
+          enum: [success, failed, disabled]
+          description: 要約生成ステータス
+        summary_error:
+          type: string
+          nullable: true
+          description: 要約エラーメッセージ
+
+    SummarizationResult:
+      type: object
+      properties:
+        article:
+          $ref: '#/components/schemas/Article'
+        summary:
+          type: string
+          nullable: true
+          description: 生成された要約
+        summary_status:
+          type: string
+          enum: [success, failed, disabled]
+          description: 要約生成ステータス
+        error:
+          type: string
+          nullable: true
+          description: エラーメッセージ
+        processing_time:
+          type: number
+          format: float
+          description: 処理時間（秒）
+
+    ServiceHealth:
+      type: object
+      properties:
+        service:
+          type: string
+          description: サービス名
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: ステータス
+        response_time_ms:
+          type: number
+          format: float
+          description: レスポンス時間（ミリ秒）
+        message:
+          type: string
+          description: ステータスメッセージ
+        error:
+          type: string
+          nullable: true
+          description: エラーメッセージ
+        version:
+          type: string
+          nullable: true
+          description: バージョン情報
+
+    SystemResources:
+      type: object
+      properties:
+        disk_usage_percent:
+          type: number
+          format: float
+          description: ディスク使用率（%）
+        memory_usage_percent:
+          type: number
+          format: float
+          description: メモリ使用率（%）
+        log_directory_size_mb:
+          type: number
+          format: float
+          description: ログディレクトリサイズ（MB）
+        data_directory_size_mb:
+          type: number
+          format: float
+          description: データディレクトリサイズ（MB）
+
+    ReportMetadata:
+      type: object
+      properties:
+        report_version:
+          type: string
+          description: レポートバージョン
+        generated_at:
+          type: string
+          format: date-time
+          description: 生成日時
+        report_type:
+          type: string
+          description: レポート種別
+        sources_included:
+          type: array
+          items:
+            type: string
+          description: 含まれるソース
+        timezone:
+          type: string
+          description: タイムゾーン
+        generator:
+          type: string
+          description: 生成システム
+
+    ReportSummary:
+      type: object
+      properties:
+        total_articles_collected:
+          type: integer
+          description: 収集記事総数
+        articles_verified:
+          type: integer
+          description: 検証済み記事数
+        articles_summarized:
+          type: integer
+          description: 要約済み記事数
+        articles_notified:
+          type: integer
+          description: 通知済み記事数
+        processing_time:
+          type: number
+          format: float
+          description: 総処理時間（秒）
+        success_rate:
+          type: number
+          format: float
+          description: 成功率（0-1）
+
+    SourceAnalysis:
+      type: object
+      properties:
+        articles_by_source:
+          type: object
+          additionalProperties:
+            type: integer
+          description: ソース別記事数
+        avg_score_by_source:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+          description: ソース別平均スコア
+        verification_rate_by_source:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+          description: ソース別検証率
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        avg_processing_time_per_article:
+          type: number
+          format: float
+          description: 記事あたり平均処理時間（秒）
+        verification_success_rate:
+          type: number
+          format: float
+          description: 検証成功率（0-1）
+        summarization_success_rate:
+          type: number
+          format: float
+          description: 要約成功率（0-1）
+        notification_success_rate:
+          type: number
+          format: float
+          description: 通知成功率（0-1）
+
+    QualityAssessment:
+      type: object
+      properties:
+        avg_verification_score:
+          type: number
+          format: float
+          description: 平均検証スコア
+        high_quality_articles_count:
+          type: integer
+          description: 高品質記事数
+        duplicate_articles_removed:
+          type: integer
+          description: 除去された重複記事数
+        keyword_match_distribution:
+          type: object
+          additionalProperties:
+            type: integer
+          description: キーワード別マッチ分布
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: エラーメッセージ
+        error_code:
+          type: string
+          description: エラーコード
+        details:
+          type: object
+          description: エラー詳細
+        timestamp:
+          type: string
+          format: date-time
+          description: エラー発生時刻
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API認証キー
+
+security:
+  - ApiKeyAuth: []
