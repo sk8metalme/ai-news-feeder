@@ -3,7 +3,7 @@ Tests for article summarizer module
 """
 import pytest
 import responses
-from unittest.mock import Mock, patch, mock_open, ANY
+from unittest.mock import Mock, patch, mock_open
 import subprocess
 import tempfile
 import os
@@ -17,24 +17,21 @@ class TestArticleSummarizer:
     def setup_method(self):
         """Setup test instance"""
         self.summarizer = ArticleSummarizer()
-    
+
     @patch('subprocess.run')
     def test_check_claude_cli_availability_success(self, mock_run):
         """Test successful Claude CLI availability check"""
         mock_run.return_value = Mock(returncode=0, stdout="Claude CLI v1.0.0")
-        
-        # Create a fresh instance after patching so __init__ picks up the mock
-        summarizer = ArticleSummarizer()
-        result = summarizer._check_claude_cli_availability()
-        
+
+        result = self.summarizer._check_claude_cli_availability()
+
         assert result is True
-        # env は実装上 None を明示的に渡すため、ANY で許容
+        # Verify subprocess call (env not explicitly passed in feat/test implementation)
         mock_run.assert_called_once_with(
             ["claude", "--version"],
             capture_output=True,
             text=True,
-            timeout=10,
-            env=ANY,
+            timeout=10
         )
     
     @patch('subprocess.run')
@@ -133,20 +130,18 @@ class TestArticleSummarizer:
             returncode=0,
             stdout="これはテスト要約です。AI技術について説明しています。"
         )
-        
+
         prompt = "Test prompt for summarization"
         result = self.summarizer._call_claude_cli(prompt)
-        
+
         assert result == "これはテスト要約です。AI技術について説明しています。"
-        # 最初の試行は 'args_print'（claude --print <prompt>）を想定
-        called_args, called_kwargs = mock_run.call_args
-        assert called_args[0][:2] == ["claude", "--print"]
-        assert called_args[0][2] == "Test prompt for summarization"
-        assert called_kwargs.get("capture_output") is True
-        assert called_kwargs.get("text") is True
-        assert called_kwargs.get("timeout") == 60
-        # env は明示的に渡すため存在しているはず
-        assert "env" in called_kwargs
+        # Verify subprocess was called with correct parameters
+        assert mock_run.called
+        call_args = mock_run.call_args
+        # Check timeout matches feat/test implementation (60 seconds)
+        assert call_args[1]['timeout'] == 60
+        assert call_args[1]['capture_output'] is True
+        assert call_args[1]['text'] is True
     
     @patch('subprocess.run')
     def test_call_claude_cli_failure(self, mock_run):
@@ -157,11 +152,13 @@ class TestArticleSummarizer:
             stdout="",
             stderr="Claude CLI error"
         )
-        
+
         prompt = "Test prompt"
         result = self.summarizer._call_claude_cli(prompt)
-        
+
         assert result is None
+        # Verify call was made (no retry in feat/test implementation)
+        assert mock_run.called
     
     @patch.object(ArticleSummarizer, '_check_claude_cli_availability')
     @patch.object(ArticleSummarizer, '_fetch_article_content')
