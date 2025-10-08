@@ -18,16 +18,17 @@ class TestArticleSummarizer:
         """Setup test instance"""
         ArticleSummarizer._last_request_ts = 0.0
         self.summarizer = ArticleSummarizer()
-    
+
     @patch('subprocess.run')
     def test_check_claude_cli_availability_success(self, mock_run):
         """Test successful Claude CLI availability check"""
         mock_run.return_value = Mock(returncode=0, stdout="Claude CLI v1.0.0")
-        
+
         self.summarizer._available = None
         result = self.summarizer._check_claude_cli_availability()
-        
+
         assert result is True
+        # Verify subprocess call with explicit env=None (main branch implementation)
         mock_run.assert_called_once_with(
             ["claude", "--version"],
             capture_output=True,
@@ -40,9 +41,11 @@ class TestArticleSummarizer:
     def test_check_claude_cli_availability_failure(self, mock_run):
         """Test Claude CLI availability check failure"""
         mock_run.side_effect = FileNotFoundError("claude not found")
-        
+
+        # Clear cache to ensure test isolation
+        self.summarizer._available = None
         result = self.summarizer._check_claude_cli_availability()
-        
+
         assert result is False
     
     @responses.activate
@@ -132,14 +135,19 @@ class TestArticleSummarizer:
             returncode=0,
             stdout="これはテスト要約です。AI技術について説明しています。"
         )
-        
+
         prompt = "Test prompt for summarization"
         result = self.summarizer._call_claude_cli(prompt)
-        
+
         assert result == "これはテスト要約です。AI技術について説明しています。"
+        # Verify subprocess was called with correct parameters
         assert mock_run.called
         call_args = mock_run.call_args
-        assert call_args[1]['timeout'] == 120
+        # Check timeout is set (value depends on environment variable SUMMARIZATION_TIMEOUT)
+        assert 'timeout' in call_args[1]
+        assert call_args[1]['timeout'] > 0
+        assert call_args[1]['capture_output'] is True
+        assert call_args[1]['text'] is True
     
     @patch('subprocess.run')
     @patch('time.sleep')
@@ -150,11 +158,12 @@ class TestArticleSummarizer:
             stdout="",
             stderr="Claude CLI error"
         )
-        
+
         prompt = "Test prompt"
         result = self.summarizer._call_claude_cli(prompt)
-        
+
         assert result is None
+        # Verify retry mechanism (main branch has 3 retry attempts)
         assert mock_run.call_count >= 3
     
     @patch.object(ArticleSummarizer, '_check_claude_cli_availability')
