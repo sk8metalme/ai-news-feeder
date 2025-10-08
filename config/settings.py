@@ -32,7 +32,9 @@ MAX_ARTICLES_PER_DAY = 5
 # Article summarization settings
 ENABLE_SUMMARIZATION = os.getenv("ENABLE_SUMMARIZATION", "true").lower() == "true"
 CLAUDE_CLI_PATH = os.getenv("CLAUDE_CLI_PATH", "claude")
-SUMMARIZATION_TIMEOUT = int(os.getenv("SUMMARIZATION_TIMEOUT", "60"))  # seconds
+SUMMARIZATION_TIMEOUT = int(os.getenv("SUMMARIZATION_TIMEOUT", "120"))  # seconds (increased from 60)
+CLAUDE_MIN_REQUEST_INTERVAL_SECONDS = float(os.getenv("CLAUDE_MIN_REQUEST_INTERVAL_SECONDS", "5.0"))  # rate limiting
+CLAUDE_MAX_PROMPT_CHARS = int(os.getenv("CLAUDE_MAX_PROMPT_CHARS", "4000"))  # prompt length limit
 
 # File paths
 LOG_DIR = "logs"

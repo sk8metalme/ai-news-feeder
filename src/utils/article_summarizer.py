@@ -7,7 +7,10 @@ import requests
 from typing import Dict, Optional
 import tempfile
 import os
+import time
+import threading
 from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_exponential
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,10 +19,16 @@ logger = get_logger(__name__)
 class ArticleSummarizer:
     """Class for summarizing articles using Claude CLI"""
     
+    _request_lock = threading.Lock()
+    _last_request_ts = 0.0
+    
     def __init__(self, claude_cli_path: str = "claude"):
         self.claude_cli_path = claude_cli_path
         self._available = None  # cache availability to avoid repeated subprocess checks
         self._cli_variant = None  # e.g., 'anthropic-cli' or 'claude-code'
+        self.timeout = int(os.getenv('SUMMARIZATION_TIMEOUT', '120'))
+        self.min_request_interval = float(os.getenv('CLAUDE_MIN_REQUEST_INTERVAL_SECONDS', '5.0'))
+        self.max_prompt_chars = int(os.getenv('CLAUDE_MAX_PROMPT_CHARS', '4000'))
         self._resolve_cli_path()
         self._check_claude_cli_availability()
 
@@ -146,10 +155,12 @@ class ArticleSummarizer:
     
     def _create_summary_prompt(self, title: str, content: str) -> str:
         """Create a prompt for Claude to summarize the article"""
-        # Truncate content if too long to avoid CLI argument limits
-        max_content_length = 2000
+        # Truncate content based on configured max_prompt_chars
+        base_prompt_length = len("この記事を日本語で3-4文に要約してください。\n\nタイトル: \n\n内容: \n\n要約:") + len(title)
+        max_content_length = max(self.max_prompt_chars - base_prompt_length - 100, 500)
+        
         if len(content) > max_content_length:
-            content = content[:max_content_length] + "..."
+            content = content[:max_content_length] + "\n\n[記事内容は長さ制限により途中までで送信されています]"
         
         prompt = f"""この記事を日本語で3-4文に要約してください。
 
@@ -160,8 +171,43 @@ class ArticleSummarizer:
 要約:"""
         return prompt
     
+    def _throttle_if_needed(self) -> None:
+        """Apply rate limiting between Claude CLI requests"""
+        if self.min_request_interval <= 0:
+            return
+        
+        with self.__class__._request_lock:
+            last_ts = self.__class__._last_request_ts
+            now = time.monotonic()
+            
+            if last_ts > 0:
+                wait_time = self.min_request_interval - (now - last_ts)
+                if wait_time > 0:
+                    logger.info(f"Rate limiting: waiting {wait_time:.2f}s before next Claude CLI call")
+                    time.sleep(wait_time)
+                    now = time.monotonic()
+            
+            self.__class__._last_request_ts = now
+    
     def _call_claude_cli(self, prompt: str) -> Optional[str]:
-        """Call Claude CLI with the given prompt"""
+        """Call Claude CLI with the given prompt (with retry logic)"""
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=4, max=10),
+            reraise=False
+        )
+        def _execute_with_retry():
+            return self._call_claude_cli_internal(prompt)
+        
+        try:
+            return _execute_with_retry()
+        except Exception:
+            return None
+    
+    def _call_claude_cli_internal(self, prompt: str) -> Optional[str]:
+        """Internal method to call Claude CLI"""
+        self._throttle_if_needed()
+        
         # Warn once if API key is not present in environment; cron may not access Keychain
         if not os.getenv('ANTHROPIC_API_KEY') and not os.getenv('PYTEST_CURRENT_TEST'):
             logger.info("Claude CLI running without ANTHROPIC_API_KEY in env; if configured via Keychain, cron may fail. Consider setting ANTHROPIC_API_KEY in .env for cron.")
@@ -257,7 +303,7 @@ class ArticleSummarizer:
                     input=attempt['stdin'],
                     capture_output=True,
                     text=True,
-                    timeout=int(os.getenv('SUMMARIZATION_TIMEOUT', '60')),
+                    timeout=self.timeout,
                     env=env
                 )
 
@@ -295,10 +341,10 @@ class ArticleSummarizer:
         def _truncate(s: str, n: int = 300) -> str:
             return s if len(s) <= n else s[:n] + '...'
         logger.error(
-            "Claude CLI failed: rc=%s, err=%s, stderr=%s, stdout=%s",
+            "Claude CLI failed after all retry attempts: rc=%s, err=%s, stderr=%s, stdout=%s",
             last_rc, last_err or 'none', _truncate(last_stderr), _truncate(last_stdout)
         )
-        return None
+        raise RuntimeError(f"Claude CLI failed: {last_err or 'unknown error'}")
 
     def _strip_ansi(self, s: str) -> str:
         """Remove ANSI color codes from text output."""
