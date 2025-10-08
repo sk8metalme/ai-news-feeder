@@ -5,6 +5,19 @@ All notable changes to AI News Feeder will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-09-08
+
+### Changed
+- Code cleanup: unify GitHub/Reddit per-source dedup; remove global dedup
+- Orchestrator wired to `.env` toggles (`ENABLE_REDDIT`, `ENABLE_GITHUB`, `MAX_ARTICLES_PER_SOURCE`)
+- Claude CLI availability check hardened for sandboxed environments
+- README updated to match `.env.example` and new integrations
+
+### Deprecated
+- `src/api/hackernews_api.py` (use `src/api/hacker_news.py`)
+- `src/api/factcheck_api.py` (use `src/verification/fact_checker.py`)
+- `src/utils/slack_notifier.py` (use `src/notification/slack_notifier.py`)
+
 ## [1.1.0] - 2025-09-06
 
 ### Added
@@ -70,3 +83,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ARTICLES_PER_DAY`: 1日の投稿記事数（デフォルト: 5）
 - `MINIMUM_SCORE`: 最低スコア閾値（デフォルト: 50）
 - `RUN_HOUR`: 実行時刻（デフォルト: 9時）
+## [1.4.0] - 2025-09-12
+
+### Added
+- Claude Code CLI サポート（非対話 `-p/--output-format text` 経路）に対応し、複数の呼び出しフォールバックを実装。
+- 診断スクリプト: `scripts/claude_cli_doctor.sh`（バージョン/非対話実行チェック）。
+- cron 最小テスト: `scripts/claude_cron_test.sh`（stdout/stderr/meta 収集）。
+- macOS LaunchAgent 管理: `scripts/setup_launchd.sh`（`--daily-at`/`--interval`/`--no-run-at-load`）。
+
+### Changed
+- README を全面更新（Claude Code CLI 前提、運用モードA: cron / B: launchd を整理）。
+- `src/utils/article_summarizer.py`: CLI 呼び出しの堅牢化、ANSI 除去、詳細ログ、可用性キャッシュ、タイムアウト尊重。
+- `src/notification/slack_notifier.py`: サマライザの遅延初期化と可用性キャッシュで Warning スパムを抑止。
+- `src/utils/health_checker.py`: Claude Code CLI を healthy と扱い説明文を更新。
+- `install_cron.sh`: `.env` ロード（`ENV_LOAD`）、PATH/UTF-8 注入、`--run-in-minutes`/`--claude-test-in-minutes` を追加。
+
+### Fixed
+- 誤ったドキュメントリンク（`anthropics/claude-cli`）を `anthropics/claude-code` に修正。
+- cron 実行時に PATH/ロケール/環境変数不足で CLI が失敗する問題を軽減。

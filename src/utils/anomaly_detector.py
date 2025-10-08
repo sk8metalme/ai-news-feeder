@@ -7,8 +7,8 @@ import logging
 from dataclasses import dataclass
 from collections import deque
 
-from src.utils.config import Config
-from src.utils.slack_notifier import SlackNotifier
+from config import settings
+from src.notification.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class AnomalyDetector:
                 details={
                     'articles_found': result.articles_found,
                     'articles_verified': result.articles_verified,
-                    'expected_minimum': Config.ARTICLES_PER_DAY
+                    'expected_minimum': settings.MAX_ARTICLES_PER_DAY
                 },
                 timestamp=datetime.now()
             )
@@ -151,7 +151,7 @@ class AnomalyDetector:
                 details={
                     'articles_found': result.articles_found,
                     'articles_verified': result.articles_verified,
-                    'expected': Config.ARTICLES_PER_DAY
+                    'expected': settings.MAX_ARTICLES_PER_DAY
                 },
                 timestamp=datetime.now()
             )
@@ -210,69 +210,31 @@ class AnomalyDetector:
         })
         self._save_alert_history()
         
-        # Slack通知
-        color = "danger" if alert.severity == "critical" else "warning"
-        
-        fields = [
-            {
-                "title": "アラート種別",
-                "value": self._get_alert_type_name(alert.type),
-                "short": True
-            },
-            {
-                "title": "重要度",
-                "value": alert.severity.upper(),
-                "short": True
-            }
+        # Slack簡易テキスト通知に移行
+        title_emoji = "🔴" if alert.severity == "critical" else "⚠️"
+        lines = [
+            f"{title_emoji} AI News Feeder アラート",
+            f"種別: {self._get_alert_type_name(alert.type)}",
+            f"重要度: {alert.severity.upper()}",
+            alert.message,
         ]
-        
-        # 詳細情報を追加
+        # 詳細追記
         if alert.type == "consecutive_failures" and alert.details.get('error_messages'):
-            fields.append({
-                "title": "最新のエラー",
-                "value": alert.details['error_messages'][-1][:200],
-                "short": False
-            })
+            lines.append(f"最新エラー: {alert.details['error_messages'][-1][:200]}")
         elif alert.type == "low_articles":
-            fields.append({
-                "title": "記事数",
-                "value": f"検証済み: {alert.details['articles_verified']} / 発見: {alert.details['articles_found']}",
-                "short": False
-            })
-        elif alert.type == "performance_degradation":
-            fields.append({
-                "title": "処理時間",
-                "value": f"現在: {alert.details['current_time']:.1f}秒 (通常の{alert.details['factor']:.1f}倍)",
-                "short": False
-            })
-        
-        message = {
-            "attachments": [
-                {
-                    "color": color,
-                    "title": "AI News Feeder アラート",
-                    "text": alert.message,
-                    "fields": fields,
-                    "footer": "Anomaly Detector",
-                    "ts": int(alert.timestamp.timestamp())
-                }
-            ]
-        }
-        
-        try:
-            response = self.slack_notifier.session.post(
-                self.slack_notifier.webhook_url,
-                json=message,
-                timeout=10
+            lines.append(
+                f"記事数: 検証済み {alert.details['articles_verified']} / 発見 {alert.details['articles_found']}"
             )
-            
-            if response.status_code == 200:
-                logger.info(f"アラート送信成功: {alert.type}")
-            else:
-                logger.error(f"アラート送信失敗: {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"アラート送信エラー: {e}")
+        elif alert.type == "performance_degradation":
+            lines.append(
+                f"処理時間: {alert.details['current_time']:.1f}s (通常の{alert.details['factor']:.1f}倍)"
+            )
+        text = "\n".join(lines)
+        ok = self.slack_notifier.send_notification(text)
+        if ok:
+            logger.info(f"アラート送信成功: {alert.type}")
+        else:
+            logger.error("アラート送信失敗")
     
     def _is_duplicate_alert(self, alert: Alert) -> bool:
         """重複アラートかチェック（1時間以内の同じタイプ）"""

@@ -11,8 +11,7 @@ import json
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.utils.health_checker import HealthChecker
-from src.utils.slack_notifier import SlackNotifier
-from src.utils.config import Config
+from src.notification.slack_notifier import SlackNotifier
 import logging
 
 # ロガー設定
@@ -101,66 +100,23 @@ class HealthMonitor:
                 logger.info("通知間隔内のため、Slack通知をスキップ")
                 return
         
-        # 通知メッセージ作成
-        if health.status == "unhealthy":
-            title = "⚠️ システム異常検知"
-            color = "danger"
+        # 簡易テキスト通知に統一
+        issues = [f"• {c.name}: {c.message}" for c in health.components if c.status != 'healthy']
+        status_emoji = {
+            'unhealthy': '🔴',
+            'degraded': '🟡'
+        }.get(health.status, '⚪')
+        text = (
+            f"{status_emoji} ヘルスチェック異常検知\n"
+            f"ステータス: {health.status.upper()}  成功: {health.checks_passed}/{health.checks_total}\n"
+            f"時刻: {health.timestamp.strftime('%Y/%m/%d %H:%M')}\n"
+            f"問題コンポーネント:\n" + ("\n".join(issues) if issues else "なし")
+        )
+        if self.slack_notifier.send_notification(text):
+            logger.info("Slack通知送信成功")
+            self.last_notification_time = now
         else:
-            title = "⚠️ システム性能低下"
-            color = "warning"
-        
-        # 問題のあるコンポーネント
-        issues = []
-        for component in health.components:
-            if component.status != 'healthy':
-                issues.append(f"• {component.name}: {component.message}")
-        
-        message = {
-            "attachments": [
-                {
-                    "color": color,
-                    "title": title,
-                    "fields": [
-                        {
-                            "title": "ステータス",
-                            "value": health.status.upper(),
-                            "short": True
-                        },
-                        {
-                            "title": "チェック結果",
-                            "value": f"{health.checks_passed}/{health.checks_total} 成功",
-                            "short": True
-                        },
-                        {
-                            "title": "問題のあるコンポーネント",
-                            "value": "\n".join(issues) if issues else "なし",
-                            "short": False
-                        },
-                        {
-                            "title": "チェック時刻",
-                            "value": health.timestamp.strftime('%Y/%m/%d %H:%M'),
-                            "short": True
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        try:
-            response = self.slack_notifier.session.post(
-                self.slack_notifier.webhook_url,
-                json=message,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                logger.info("Slack通知送信成功")
-                self.last_notification_time = now
-            else:
-                logger.error(f"Slack通知送信失敗: {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"Slack通知エラー: {e}")
+            logger.error("Slack通知送信失敗")
     
     def run_continuous(self, interval_minutes=30):
         """定期的なヘルスチェックを実行"""

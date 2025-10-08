@@ -2,14 +2,22 @@
 
 ## 🗺️ 開発ロードマップ
 
+### 最近の変更サマリ（2025-09-12）
+- [x] Claude Code CLI（`-p/--output-format text`）対応と多段フォールバックを実装
+- [x] cron の `.env` ロード・PATH/UTF-8 注入・診断ワンショット対応を追加
+- [x] macOS LaunchAgent 管理スクリプトを追加（`--daily-at`/`--interval`/`--no-run-at-load`）
+- [x] 診断スクリプト（`scripts/claude_cli_doctor.sh`, `scripts/claude_cron_test.sh`）を追加
+- [x] README / docs/context.md / ARCHITECTURE.md / CHANGELOG.md を最新化
+
 ### フェーズ1: 安定化・最適化 (Phase 1: Stabilization)
 **期間**: 2-3週間  
 **目標**: 本格運用に向けた品質向上
 
 #### Phase 1.1: 緊急修正 (Sprint 1: 1週間)
 - [ ] **テスト修正** (優先度: 🔴 高)
-  - [ ] Claude CLI呼び出しテストの更新 (`test_article_summarizer.py`)
-  - [ ] Slack通知エラーハンドリングテスト修正 (`test_slack_notifier.py`)
+  - [ ] 要約テストを Claude Code CLI 仕様（`-p`）に更新 (`test_article_summarizer.py`)
+  - [ ] 失敗時の stdout/stderr 検証（先頭トランケーション）を追加
+  - [ ] Slack通知エラーハンドリングテスト修正（Webhook未設定/ネットワーク失敗） (`test_slack_notifier.py`)
   - [ ] テストカバレッジ 95%以上を達成
 
 - [ ] **ファクトチェック基準見直し** (優先度: 🔴 高)
@@ -21,7 +29,7 @@
 - [ ] **ヘルスチェック機能** (優先度: 🟡 中)
   - [ ] システム稼働状況監視
   - [ ] API接続状況チェック
-  - [ ] Claude CLI可用性監視
+  - [ ] Claude CLI可用性監視（バリアント/非対話可否/バージョンの表示）
 
 - [ ] **異常検知・アラート** (優先度: 🟡 中)
   - [ ] 連続実行失敗時のアラート
@@ -46,12 +54,13 @@
 - [ ] **キャッシュ機能実装** (優先度: 🟡 中)
   - [ ] Hacker News記事キャッシュ
   - [ ] 検証結果キャッシュ (24時間)
-  - [ ] Claude CLI結果キャッシュ
+  - [ ] Claude CLI結果キャッシュ（同一URL・同一日で再利用）
 
 - [ ] **Claude CLI最適化** (優先度: 🟡 中)
-  - [ ] バッチ処理による効率化
+  - [ ] バッチ処理による効率化（複数記事の逐次要約）
   - [ ] プロンプト最適化
   - [ ] タイムアウト調整
+  - [ ] 失敗時バックオフとレート制御
 
 #### Phase 2.2: 信頼性向上 (Sprint 4: 1-2週間)
 - [ ] **リトライメカニズム** (優先度: 🟡 中)
@@ -192,6 +201,7 @@
 - **処理時間**: 5記事処理を5分以内
 - **API成功率**: 95%以上
 - **システム稼働率**: 99%以上
+- **要約成功率**: 80%以上（Keychain/cron 設定差異を吸収）
 
 ### 利用指標
 - **記事検証精度**: 手動検証との一致率80%以上

@@ -16,6 +16,7 @@ class TestArticleSummarizer:
     
     def setup_method(self):
         """Setup test instance"""
+        ArticleSummarizer._last_request_ts = 0.0
         self.summarizer = ArticleSummarizer()
 
     @patch('subprocess.run')
@@ -23,24 +24,28 @@ class TestArticleSummarizer:
         """Test successful Claude CLI availability check"""
         mock_run.return_value = Mock(returncode=0, stdout="Claude CLI v1.0.0")
 
+        self.summarizer._available = None
         result = self.summarizer._check_claude_cli_availability()
 
         assert result is True
-        # Verify subprocess call (env not explicitly passed in feat/test implementation)
+        # Verify subprocess call with explicit env=None (main branch implementation)
         mock_run.assert_called_once_with(
             ["claude", "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            env=None
         )
     
     @patch('subprocess.run')
     def test_check_claude_cli_availability_failure(self, mock_run):
         """Test Claude CLI availability check failure"""
         mock_run.side_effect = FileNotFoundError("claude not found")
-        
+
+        # Clear cache to ensure test isolation
+        self.summarizer._available = None
         result = self.summarizer._check_claude_cli_availability()
-        
+
         assert result is False
     
     @responses.activate
@@ -138,15 +143,16 @@ class TestArticleSummarizer:
         # Verify subprocess was called with correct parameters
         assert mock_run.called
         call_args = mock_run.call_args
-        # Check timeout matches feat/test implementation (60 seconds)
-        assert call_args[1]['timeout'] == 60
+        # Check timeout is set (value depends on environment variable SUMMARIZATION_TIMEOUT)
+        assert 'timeout' in call_args[1]
+        assert call_args[1]['timeout'] > 0
         assert call_args[1]['capture_output'] is True
         assert call_args[1]['text'] is True
     
     @patch('subprocess.run')
-    def test_call_claude_cli_failure(self, mock_run):
-        """Test Claude CLI call failure"""
-        # Mock subprocess failure
+    @patch('time.sleep')
+    def test_call_claude_cli_failure(self, mock_sleep, mock_run):
+        """Test Claude CLI call failure with retry mechanism"""
         mock_run.return_value = Mock(
             returncode=1,
             stdout="",
@@ -157,8 +163,8 @@ class TestArticleSummarizer:
         result = self.summarizer._call_claude_cli(prompt)
 
         assert result is None
-        # Verify call was made (no retry in feat/test implementation)
-        assert mock_run.called
+        # Verify retry mechanism (main branch has 3 retry attempts)
+        assert mock_run.call_count >= 3
     
     @patch.object(ArticleSummarizer, '_check_claude_cli_availability')
     @patch.object(ArticleSummarizer, '_fetch_article_content')
@@ -213,3 +219,20 @@ class TestArticleSummarizer:
         
         mock_check.return_value = False
         assert self.summarizer.is_available() is False
+    
+    @patch('time.sleep')
+    @patch('time.monotonic')
+    def test_rate_limiting(self, mock_monotonic, mock_sleep):
+        """Test rate limiting between Claude CLI calls"""
+        ArticleSummarizer._last_request_ts = 0.0
+        mock_monotonic.side_effect = [1.0, 2.0, 7.0, 12.0]
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 0
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 1
+        assert abs(mock_sleep.call_args[0][0] - 4.0) < 0.1
+        
+        self.summarizer._throttle_if_needed()
+        assert mock_sleep.call_count == 1
